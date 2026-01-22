@@ -1,0 +1,123 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base styles */
+body {
+  margin: 0;
+  overflow: hidden;
+  background-color: #f8fafc;
+  user-select: none;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Grid background */
+.grid-bg {
+  background-color: #f8fafc;
+  background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Focus styles */
+input:focus {
+  outline: none;
+}
+
+/* Hide scrollbar but keep functionality */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Mermaid preview styles */
+.mermaid-preview .nodeLabel,
+.mermaid-preview .edgeLabel,
+.mermaid-preview .label {
+  word-wrap: break-word !important;
+  white-space: normal !important;
+  overflow-wrap: break-word !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+}
+
+.mermaid-preview .node rect,
+.mermaid-preview .node polygon,
+.mermaid-preview .node circle,
+.mermaid-preview .node ellipse,
+.mermaid-preview .node path {
+  stroke-width: 2px !important;
+}
+
+.mermaid-preview foreignObject {
+  overflow: visible !important;
+}
+
+.mermaid-preview foreignObject div,
+.mermaid-preview foreignObject span,
+.mermaid-preview foreignObject p {
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+  text-align: center !important;
+  font-size: 11px !important;
+  line-height: 1.4 !important;
+  max-width: 150px !important;
+  display: block !important;
+}
+
+.mermaid-preview text {
+  font-size: 11px !important;
+}
+
+.mermaid-preview .cluster-label {
+  font-size: 12px !important;
+}
+
+/* Loading state */
+#root:empty::before {
+  content: "正在加载编辑器...";
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  color: #64748b;
+  font-size: 14px;
+}
+
+/* Animation utilities */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.2s ease-out;
+}
