@@ -126,18 +126,14 @@ export default function App() {
 
   // Update node/link setters
   const setNodes = useCallback((nodesOrFn: GraphNode[] | ((prev: GraphNode[]) => GraphNode[])) => {
-    setGraphState(prev => {
-      const newNodes = typeof nodesOrFn === 'function' ? nodesOrFn(prev.nodes) : nodesOrFn
-      return { ...prev, nodes: newNodes }
-    })
-  }, [setGraphState])
+    const newNodes = typeof nodesOrFn === 'function' ? nodesOrFn(nodes) : nodesOrFn
+    setGraphState({ ...graphState, nodes: newNodes })
+  }, [graphState, nodes, setGraphState])
 
   const setLinks = useCallback((linksOrFn: GraphLink[] | ((prev: GraphLink[]) => GraphLink[])) => {
-    setGraphState(prev => {
-      const newLinks = typeof linksOrFn === 'function' ? linksOrFn(prev.links) : linksOrFn
-      return { ...prev, links: newLinks }
-    })
-  }, [setGraphState])
+    const newLinks = typeof linksOrFn === 'function' ? linksOrFn(links) : linksOrFn
+    setGraphState({ ...graphState, links: newLinks })
+  }, [graphState, links, setGraphState])
 
   const setGraph = useCallback((newNodes: GraphNode[], newLinks: GraphLink[]) => {
     setGraphState({ nodes: newNodes, links: newLinks })

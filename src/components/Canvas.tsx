@@ -13,7 +13,6 @@ import type {
   ResizeHandle
 } from '@/types'
 import { getNodeSize } from '@/utils/nodeSize'
-import { getNodeCenter } from '@/utils/geometry'
 
 interface CanvasProps {
   nodes: GraphNode[]
@@ -164,7 +163,6 @@ export const Canvas = memo(({
     if (!node) return
 
     if (mode === 'link') {
-      const center = getNodeCenter(node)
       const pos = getCanvasPos(e)
       onDrawingLinkStart(nodeId, e)
       // Set initial drawing link position
