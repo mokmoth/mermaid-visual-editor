@@ -332,7 +332,9 @@ export default function App() {
       resetSeq(diagram.state || createInitialSequenceDiagramState())
     }
     
-    // Reset view
+    // Reset view and leave code-edit mode so the new diagram's source is shown
+    setIsManualEditing(false)
+    setMermaidError(null)
     setEditorView({ x: 0, y: 0, scale: 1 })
     setSelection(null)
     setMultiSelect(new Set())
@@ -584,6 +586,17 @@ export default function App() {
     }))
   }, [setGraphState])
 
+  const countDiagramElements = useCallback((type: string, state: unknown): number => {
+    if (!state || typeof state !== 'object') return 0
+    const s = state as Record<string, unknown>
+    if (type === 'flowchart') return Array.isArray(s.nodes) ? s.nodes.length : 0
+    if (type === 'state') return Array.isArray(s.states) ? s.states.length : 0
+    if (type === 'class') return Array.isArray(s.classes) ? s.classes.length : 0
+    if (type === 'er') return Array.isArray(s.entities) ? s.entities.length : 0
+    if (type === 'sequence') return Array.isArray(s.participants) ? s.participants.length : 0
+    return 0
+  }, [])
+
   const renderGeneration = useRef(0)
 
   const renderDiagram = useCallback(async (code: string) => {
@@ -612,6 +625,9 @@ export default function App() {
     } catch (e) {
       if (gen !== renderGeneration.current) return
       console.error('Mermaid render error:', e)
+      if (mermaidRef.current) {
+        mermaidRef.current.innerHTML = ''
+      }
       setMermaidError(t('errors.parseError') + ': ' + (e as Error).message)
     }
   }, [t])
@@ -1169,10 +1185,12 @@ export default function App() {
       try {
         const result = parseMermaidCode(newCode, nodes, direction)
         if (result) {
-          // When parsing code, apply layout without swimlanes since code doesn't preserve swimlane assignments
-          const layoutedNodes = result.nodes.length > 3 ? applyAutoLayout(result.nodes, result.links, result.direction, []) : result.nodes
-          setDirection(result.direction)
-          setGraph(layoutedNodes, result.links)
+          const parsedCount = result.nodes.length
+          if (!(parsedCount === 0 && nodes.length > 0)) {
+            const layoutedNodes = result.nodes.length > 3 ? applyAutoLayout(result.nodes, result.links, result.direction, []) : result.nodes
+            setDirection(result.direction)
+            setGraph(layoutedNodes, result.links)
+          }
         }
       } catch (err) {
         console.error('Mermaid Parsing Error:', err)
@@ -1186,15 +1204,19 @@ export default function App() {
           : null
         const result = activePlugin.fromMermaid(newCode, currentState, direction)
         if (result.success && result.state) {
-          if (result.direction) setDirection(result.direction)
-          if (activeDiagramType === 'state') {
-            setStateState(result.state as StateDiagramState)
-          } else if (activeDiagramType === 'class') {
-            setClassState(result.state as ClassDiagramState)
-          } else if (activeDiagramType === 'er') {
-            setERState(result.state as ERDiagramState)
-          } else if (activeDiagramType === 'sequence') {
-            setSequenceState(result.state as SequenceDiagramState)
+          const parsedCount = countDiagramElements(activeDiagramType, result.state)
+          const currentCount = countDiagramElements(activeDiagramType, currentState)
+          if (!(parsedCount === 0 && currentCount > 0)) {
+            if (result.direction) setDirection(result.direction)
+            if (activeDiagramType === 'state') {
+              setStateState(result.state as StateDiagramState)
+            } else if (activeDiagramType === 'class') {
+              setClassState(result.state as ClassDiagramState)
+            } else if (activeDiagramType === 'er') {
+              setERState(result.state as ERDiagramState)
+            } else if (activeDiagramType === 'sequence') {
+              setSequenceState(result.state as SequenceDiagramState)
+            }
           }
         }
       } catch (err) {
@@ -1203,7 +1225,7 @@ export default function App() {
     }
 
     renderDiagram(newCode)
-  }, [nodes, direction, setGraph, renderDiagram, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
+  }, [nodes, direction, setGraph, renderDiagram, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState, countDiagramElements])
 
   // Handle code blur
   const handleCodeBlur = useCallback(() => {
