@@ -232,6 +232,12 @@ export const en = {
     preview: 'Preview',
     fullscreen: 'Fullscreen',
     exitFullscreen: 'Exit Fullscreen',
+    statsClasses: 'Classes: {count}',
+    statsRelationships: 'Relationships: {count}',
+    statsEntities: 'Entities: {count}',
+    statsParticipants: 'Participants: {count}',
+    statsMessages: 'Messages: {count}',
+    applyCode: 'Apply',
   },
 
   // Code Editor

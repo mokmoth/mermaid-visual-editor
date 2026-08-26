@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { Entity as EntityType } from './types'
 import type { ResizeHandle } from '@/core/types'
+import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface EntityNodeProps {
   entity: EntityType
@@ -48,6 +49,8 @@ export const EntityNodeComponent = memo(({
   return (
     <g
       transform={`translate(${entity.x}, ${entity.y})`}
+      {...interactiveA11y(entity.name || entity.id, selected)}
+      onKeyDown={(e) => activateOnEnterOrSpace(e, () => onPointerDown(e as unknown as React.PointerEvent))}
       onPointerDown={(e) => {
         e.stopPropagation()
         onPointerDown(e)

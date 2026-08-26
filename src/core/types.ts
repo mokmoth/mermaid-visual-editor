@@ -49,8 +49,8 @@ export interface DiagramPlugin<TState = unknown> {
   // Initial state factory
   createInitialState: () => TState
 
-  // Components
-  Toolbar: ComponentType<ToolbarProps<TState>>
+  // Components. Header owns the live node-button chrome; Toolbar is optional leftover.
+  Toolbar?: ComponentType<ToolbarProps<TState>>
   Canvas: ComponentType<CanvasProps<TState>>
   Sidebar: ComponentType<SidebarProps<TState>>
 

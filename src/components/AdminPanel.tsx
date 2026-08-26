@@ -29,7 +29,7 @@ export const AdminPanel = memo(({ isOpen, onClose, currentUser }: AdminPanelProp
     }
   }, [isOpen])
 
-  const handleResetPassword = useCallback(() => {
+  const handleResetPassword = useCallback(async () => {
     if (!resetTarget) return
     
     setError('')
@@ -50,7 +50,7 @@ export const AdminPanel = memo(({ isOpen, onClose, currentUser }: AdminPanelProp
       return
     }
     
-    const result = resetUserPassword(resetTarget, newPassword, currentUser)
+    const result = await resetUserPassword(resetTarget, newPassword, currentUser)
     if (result.success) {
       setSuccess(`已成功重置 ${resetTarget} 的密码`)
       setResetTarget(null)

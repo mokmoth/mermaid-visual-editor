@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { ClassNode as ClassNodeType, ClassMember } from './types'
 import type { ResizeHandle } from '@/core/types'
+import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface ClassNodeProps {
   classNode: ClassNodeType
@@ -52,6 +53,7 @@ export const ClassNodeComponent = memo(({
   return (
     <g
       transform={`translate(${classNode.x}, ${classNode.y})`}
+      {...interactiveA11y(classNode.name || classNode.id, selected)}
       onPointerDown={(e) => {
         e.stopPropagation()
         onPointerDown(e)
@@ -63,6 +65,7 @@ export const ClassNodeComponent = memo(({
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       onDoubleClick={onDoubleClick}
+      onKeyDown={(e) => activateOnEnterOrSpace(e, () => onPointerDown(e as unknown as React.PointerEvent))}
       style={{ cursor: 'move' }}
     >
       {/* Main rectangle */}

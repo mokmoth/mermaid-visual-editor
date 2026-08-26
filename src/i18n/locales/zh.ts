@@ -234,6 +234,12 @@ export const zh: TranslationKeys = {
     preview: '预览',
     fullscreen: '全屏',
     exitFullscreen: '退出全屏',
+    statsClasses: '类: {count}',
+    statsRelationships: '关系: {count}',
+    statsEntities: '实体: {count}',
+    statsParticipants: '参与者: {count}',
+    statsMessages: '消息: {count}',
+    applyCode: '应用',
   },
 
   // Code Editor

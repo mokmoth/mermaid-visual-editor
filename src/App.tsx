@@ -1,5 +1,4 @@
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react'
-import mermaid from 'mermaid'
 import { Header } from './components/Header'
 import { Canvas } from './components/Canvas'
 import { Sidebar } from './components/Sidebar'
@@ -9,7 +8,9 @@ import { UserNameDialog } from './components/UserNameDialog'
 import { DiagramList } from './components/DiagramList'
 import { AdminPanel } from './components/AdminPanel'
 import { useUndoRedo } from './hooks/useUndoRedo'
-import { generateMermaidCode, parseMermaidCode, renderMermaidSvg, applySvgToPreview } from './utils/mermaid'
+import { generateMermaidCode, parseMermaidCode } from './utils/mermaid'
+import { countDiagramElements, shouldApplyParsedState } from './utils/diagramState'
+import { useMermaidPreview } from './hooks/useMermaidPreview'
 import { applyAutoLayout } from './utils/layout'
 import { getNodeSize } from './utils/nodeSize'
 import { getNodeCenter, calculateFitToView, calculateFlowchartBounds, calculateItemsBounds } from './utils/geometry'
@@ -225,7 +226,7 @@ export default function App() {
   // Code state
   const [generatedCode, setGeneratedCode] = useState('')
   const [isManualEditing, setIsManualEditing] = useState(false)
-  const [mermaidError, setMermaidError] = useState<string | null>(null)
+  const { mermaidRef, mermaidError, setMermaidError, renderDiagram } = useMermaidPreview()
 
   // UI state
   const [isFullscreen, setIsFullscreen] = useState(false)
@@ -235,7 +236,6 @@ export default function App() {
   // Refs
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-  const mermaidRef = useRef<HTMLDivElement>(null)
   const rAF = useRef<number | null>(null)
   const renderTimeoutRef = useRef<number | null>(null)
   const autoSaveTimeoutRef = useRef<number | null>(null)
@@ -466,49 +466,6 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [currentDiagramId, saveCurrentDiagram])
 
-  // Theme mermaid to match the editor canvas. startOnLoad stays false (see main.tsx).
-  useEffect(() => {
-    mermaid.startOnLoad = false
-    mermaid.initialize({
-      startOnLoad: false,
-      theme: 'base',
-      securityLevel: 'loose',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
-      flowchart: {
-        htmlLabels: true,
-        useMaxWidth: true,
-        wrappingWidth: 120,
-        nodeSpacing: 50,
-        rankSpacing: 60,
-        curve: 'basis',
-        padding: 15,
-        diagramPadding: 20
-      },
-      themeVariables: {
-        primaryColor: '#ffffff',
-        primaryTextColor: '#1e293b',
-        primaryBorderColor: '#475569',
-        secondaryColor: '#ffffff',
-        secondaryTextColor: '#1e293b',
-        secondaryBorderColor: '#475569',
-        tertiaryColor: '#ffffff',
-        tertiaryTextColor: '#1e293b',
-        tertiaryBorderColor: '#475569',
-        lineColor: '#475569',
-        fontSize: '14px',
-        background: '#ffffff',
-        mainBkg: '#ffffff',
-        nodeBorder: '#475569',
-        clusterBkg: '#f0f9ff',
-        clusterBorder: '#94a3b8',
-        edgeLabelBackground: '#ffffff',
-        noteBkgColor: '#fef9c3',
-        noteTextColor: '#713f12',
-        noteBorderColor: '#facc15'
-      }
-    })
-  }, [])
-
   // Auto fit-to-view on initial load
   const [initialFitDone, setInitialFitDone] = useState(false)
 
@@ -585,52 +542,6 @@ export default function App() {
       swimlanes: newSwimlanes ?? prev.swimlanes
     }))
   }, [setGraphState])
-
-  const countDiagramElements = useCallback((type: string, state: unknown): number => {
-    if (!state || typeof state !== 'object') return 0
-    const s = state as Record<string, unknown>
-    if (type === 'flowchart') return Array.isArray(s.nodes) ? s.nodes.length : 0
-    if (type === 'state') return Array.isArray(s.states) ? s.states.length : 0
-    if (type === 'class') return Array.isArray(s.classes) ? s.classes.length : 0
-    if (type === 'er') return Array.isArray(s.entities) ? s.entities.length : 0
-    if (type === 'sequence') return Array.isArray(s.participants) ? s.participants.length : 0
-    return 0
-  }, [])
-
-  const renderGeneration = useRef(0)
-
-  const renderDiagram = useCallback(async (code: string) => {
-    const gen = ++renderGeneration.current
-    if (!code.trim()) return
-
-    for (let attempt = 0; attempt < 20; attempt++) {
-      if (gen !== renderGeneration.current) return
-      if (mermaidRef.current) break
-      await new Promise(resolve => setTimeout(resolve, 50))
-    }
-    if (gen !== renderGeneration.current) return
-    if (!mermaidRef.current) return
-
-    try {
-      mermaidRef.current.removeAttribute('data-processed')
-      const svg = await Promise.race([
-        renderMermaidSvg(code),
-        new Promise<string>((_, reject) =>
-          setTimeout(() => reject(new Error('Mermaid render timeout')), 8000)
-        )
-      ])
-      if (gen !== renderGeneration.current || !mermaidRef.current) return
-      applySvgToPreview(mermaidRef.current, svg)
-      setMermaidError(null)
-    } catch (e) {
-      if (gen !== renderGeneration.current) return
-      console.error('Mermaid render error:', e)
-      if (mermaidRef.current) {
-        mermaidRef.current.innerHTML = ''
-      }
-      setMermaidError(t('errors.parseError') + ': ' + (e as Error).message)
-    }
-  }, [t])
 
   // Update code when graph changes
   useEffect(() => {
@@ -1175,74 +1086,67 @@ export default function App() {
     setEditorView({ x: 0, y: 0, scale: 1 })
   }, [direction, nodes, links, swimlanes, setNodes, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
 
-  // Handle code change
-  const handleCodeChange = useCallback((newCode: string) => {
-    setGeneratedCode(newCode)
-    setIsManualEditing(true)
-
-    // Parse code based on active diagram type
+  // Typing only updates preview. Canvas is written on blur if the parse is usable.
+  const applyCodeToCanvas = useCallback((newCode: string): boolean => {
     if (activeDiagramType === 'flowchart') {
       try {
         const result = parseMermaidCode(newCode, nodes, direction)
-        if (result) {
-          const parsedCount = result.nodes.length
-          if (!(parsedCount === 0 && nodes.length > 0)) {
-            const layoutedNodes = result.nodes.length > 3 ? applyAutoLayout(result.nodes, result.links, result.direction, []) : result.nodes
-            setDirection(result.direction)
-            setGraph(layoutedNodes, result.links)
-          }
-        }
+        if (!result) return false
+        if (!shouldApplyParsedState(result.nodes.length, nodes.length)) return false
+        const layoutedNodes = result.nodes.length > 3 ? applyAutoLayout(result.nodes, result.links, result.direction, []) : result.nodes
+        setDirection(result.direction)
+        setGraph(layoutedNodes, result.links)
+        return true
       } catch (err) {
         console.error('Mermaid Parsing Error:', err)
-      }
-    } else if (activePlugin) {
-      try {
-        const currentState = activeDiagramType === 'state' ? stateState
-          : activeDiagramType === 'class' ? classState
-          : activeDiagramType === 'er' ? erState
-          : activeDiagramType === 'sequence' ? sequenceState
-          : null
-        const result = activePlugin.fromMermaid(newCode, currentState, direction)
-        if (result.success && result.state) {
-          const parsedCount = countDiagramElements(activeDiagramType, result.state)
-          const currentCount = countDiagramElements(activeDiagramType, currentState)
-          if (!(parsedCount === 0 && currentCount > 0)) {
-            if (result.direction) setDirection(result.direction)
-            if (activeDiagramType === 'state') {
-              setStateState(result.state as StateDiagramState)
-            } else if (activeDiagramType === 'class') {
-              setClassState(result.state as ClassDiagramState)
-            } else if (activeDiagramType === 'er') {
-              setERState(result.state as ERDiagramState)
-            } else if (activeDiagramType === 'sequence') {
-              setSequenceState(result.state as SequenceDiagramState)
-            }
-          }
-        }
-      } catch (err) {
-        console.error('Mermaid Parsing Error:', err)
+        return false
       }
     }
-
-    renderDiagram(newCode)
-  }, [nodes, direction, setGraph, renderDiagram, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState, countDiagramElements])
-
-  // Handle code blur
-  const handleCodeBlur = useCallback(() => {
-    setIsManualEditing(false)
-    if (activeDiagramType === 'flowchart') {
-      setGeneratedCode(generateMermaidCode(nodes, links, direction, swimlanes))
-    } else if (activePlugin) {
+    if (!activePlugin) return false
+    try {
       const currentState = activeDiagramType === 'state' ? stateState
         : activeDiagramType === 'class' ? classState
         : activeDiagramType === 'er' ? erState
         : activeDiagramType === 'sequence' ? sequenceState
         : null
-      if (currentState) {
-        setGeneratedCode(activePlugin.toMermaid(currentState, direction))
-      }
+      const result = activePlugin.fromMermaid(newCode, currentState, direction)
+      if (!result.success || !result.state) return false
+      const parsedCount = countDiagramElements(activeDiagramType, result.state)
+      const currentCount = countDiagramElements(activeDiagramType, currentState)
+      if (!shouldApplyParsedState(parsedCount, currentCount)) return false
+      if (result.direction) setDirection(result.direction)
+      if (activeDiagramType === 'state') setStateState(result.state as StateDiagramState)
+      else if (activeDiagramType === 'class') setClassState(result.state as ClassDiagramState)
+      else if (activeDiagramType === 'er') setERState(result.state as ERDiagramState)
+      else if (activeDiagramType === 'sequence') setSequenceState(result.state as SequenceDiagramState)
+      return true
+    } catch (err) {
+      console.error('Mermaid Parsing Error:', err)
+      return false
     }
-  }, [nodes, links, direction, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
+  }, [nodes, direction, setGraph, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
+
+  const handleCodeChange = useCallback((newCode: string) => {
+    setGeneratedCode(newCode)
+    setIsManualEditing(true)
+    renderDiagram(newCode)
+  }, [renderDiagram])
+
+  const handleCodeBlur = useCallback(() => {
+    applyCodeToCanvas(generatedCode)
+    setIsManualEditing(false)
+  }, [applyCodeToCanvas, generatedCode])
+
+  useEffect(() => {
+    if (!isManualEditing) return
+    const onPointerDown = (e: PointerEvent) => {
+      const target = e.target as HTMLElement | null
+      if (target?.closest('textarea') || target?.closest('.npm__react-simple-code-editor')) return
+      handleCodeBlur()
+    }
+    window.addEventListener('pointerdown', onPointerDown, true)
+    return () => window.removeEventListener('pointerdown', onPointerDown, true)
+  }, [isManualEditing, handleCodeBlur])
 
   // Handle diagram type change: persist the current document first, then
   // open a new document of the target type so autosave cannot overwrite

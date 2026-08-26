@@ -1,7 +1,31 @@
-import mermaid from 'mermaid'
 import type { GraphNode, GraphLink, FlowDirection, Swimlane } from '@/types'
 
 let mermaidRenderSeq = 0
+
+/** Remove temp nodes mermaid 11 leaves on document.body after a failed render. */
+export function cleanupMermaidArtifacts(): void {
+  if (typeof document === 'undefined') return
+
+  document.querySelectorAll('[id^="d-mmd-svg-"], [id^="dmmd-svg-"]').forEach(el => el.remove())
+
+  document.querySelectorAll('body > svg, body > div > svg').forEach(svg => {
+    const inPreview = svg.closest('.mermaid-preview')
+    if (inPreview) return
+    const role = svg.getAttribute('aria-roledescription') || ''
+    const text = svg.textContent || ''
+    if (
+      role === 'error' ||
+      text.includes('Syntax error in text') ||
+      text.includes('mermaid version')
+    ) {
+      const host = svg.parentElement
+      svg.remove()
+      if (host && host !== document.body && host.childElementCount === 0 && !host.id) {
+        host.remove()
+      }
+    }
+  })
+}
 
 /**
  * Render Mermaid source to an SVG string.
@@ -11,9 +35,19 @@ let mermaidRenderSeq = 0
 export async function renderMermaidSvg(code: string): Promise<string> {
   const sanitized = sanitizeMermaidCode(code)
   const id = `mmd-svg-${++mermaidRenderSeq}-${Math.random().toString(36).slice(2, 8)}`
-  const api = mermaid.mermaidAPI ?? mermaid
-  const result = await api.render(id, sanitized)
-  return result.svg
+  const host = document.createElement('div')
+  host.setAttribute('data-mermaid-scratch', 'true')
+  host.style.cssText = 'position:absolute;left:-99999px;top:0;width:800px;height:600px;overflow:hidden;'
+  document.body.appendChild(host)
+  try {
+    const mermaid = (await import('mermaid')).default
+    const api = mermaid.mermaidAPI ?? mermaid
+    const result = await api.render(id, sanitized, host)
+    return result.svg
+  } finally {
+    host.remove()
+    cleanupMermaidArtifacts()
+  }
 }
 
 export function applySvgToPreview(container: HTMLElement, svg: string): void {

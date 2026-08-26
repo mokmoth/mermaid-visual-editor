@@ -1,5 +1,6 @@
 import { memo, useCallback } from 'react'
 import type { Participant } from './types'
+import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface ParticipantNodeProps {
   participant: Participant
@@ -47,8 +48,10 @@ export const ParticipantNodeComponent = memo(({
 
     return (
       <g
+        {...interactiveA11y(participant.name, isSelected)}
         onPointerDown={handlePointerDown}
         onDoubleClick={onDoubleClick}
+        onKeyDown={(e) => activateOnEnterOrSpace(e, () => handlePointerDown(e as unknown as React.PointerEvent))}
         style={{ cursor: 'move' }}
       >
         {/* Timeline (dashed line) */}
@@ -127,8 +130,10 @@ export const ParticipantNodeComponent = memo(({
   // Draw rectangular participant
   return (
     <g
+      {...interactiveA11y(participant.name, isSelected)}
       onPointerDown={handlePointerDown}
       onDoubleClick={onDoubleClick}
+      onKeyDown={(e) => activateOnEnterOrSpace(e, () => handlePointerDown(e as unknown as React.PointerEvent))}
       style={{ cursor: 'move' }}
     >
       {/* Timeline (dashed line) */}

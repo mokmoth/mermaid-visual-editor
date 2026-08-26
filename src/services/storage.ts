@@ -111,7 +111,7 @@ export function listAllUsers(): { username: string; diagramCount: number; isAdmi
 /**
  * Reset a user's password (admin only)
  */
-export function resetUserPassword(targetUsername: string, newPassword: string, adminUsername?: string): { success: boolean; error?: string } {
+export async function resetUserPassword(targetUsername: string, newPassword: string, adminUsername?: string): Promise<{ success: boolean; error?: string }> {
   const admin = adminUsername || getCurrentUser()
   
   // Verify admin
@@ -131,23 +131,22 @@ export function resetUserPassword(targetUsername: string, newPassword: string, a
   }
   
   // Update password
-  userData.passwordHash = hashPassword(newPassword)
+  userData.passwordHash = await hashPassword(newPassword)
   saveUserData(userData, targetUsername)
   
   return { success: true }
 }
 
-/**
- * Simple hash function for password (not cryptographically secure, but provides basic protection)
- */
-export function hashPassword(password: string): string {
+const PASSWORD_PREFIX = 'sha256$'
+const PASSWORD_SALT = 'mermaid_editor_v2'
+
+export function hashPasswordLegacy(password: string): string {
   let hash = 0
   for (let i = 0; i < password.length; i++) {
     const char = password.charCodeAt(i)
     hash = ((hash << 5) - hash) + char
-    hash = hash & hash // Convert to 32bit integer
+    hash = hash & hash
   }
-  // Add some complexity
   const salt = 'mermaid_editor_2024'
   let finalHash = hash.toString(16)
   for (let i = 0; i < salt.length; i++) {
@@ -156,11 +155,18 @@ export function hashPassword(password: string): string {
   return finalHash
 }
 
-/**
- * Verify password against stored hash
- */
-export function verifyPassword(password: string, storedHash: string): boolean {
-  return hashPassword(password) === storedHash
+export async function hashPassword(password: string): Promise<string> {
+  const data = new TextEncoder().encode(`${PASSWORD_SALT}:${password}`)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  const hex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return PASSWORD_PREFIX + hex
+}
+
+export async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+  if (storedHash.startsWith(PASSWORD_PREFIX)) {
+    return (await hashPassword(password)) === storedHash
+  }
+  return hashPasswordLegacy(password) === storedHash
 }
 
 /**
@@ -174,13 +180,18 @@ export function userExists(username: string): boolean {
 /**
  * Validate user credentials
  */
-export function validateUser(username: string, password: string): { valid: boolean; error?: string } {
+export async function validateUser(username: string, password: string): Promise<{ valid: boolean; error?: string; upgraded?: boolean }> {
   const userData = getUserData(username)
   if (!userData) {
     return { valid: false, error: '用户不存在' }
   }
-  if (!verifyPassword(password, userData.passwordHash)) {
+  if (!(await verifyPassword(password, userData.passwordHash))) {
     return { valid: false, error: '密码错误' }
+  }
+  if (!userData.passwordHash.startsWith(PASSWORD_PREFIX)) {
+    userData.passwordHash = await hashPassword(password)
+    saveUserData(userData, username)
+    return { valid: true, upgraded: true }
   }
   return { valid: true }
 }
@@ -213,7 +224,7 @@ export function setCurrentUser(username: string): void {
 /**
  * Register a new user with password
  */
-export function registerUser(username: string, password: string): { success: boolean; error?: string; isNewAdmin?: boolean } {
+export async function registerUser(username: string, password: string): Promise<{ success: boolean; error?: string; isNewAdmin?: boolean }> {
   if (userExists(username)) {
     return { success: false, error: '用户名已存在' }
   }
@@ -224,7 +235,7 @@ export function registerUser(username: string, password: string): { success: boo
   // Check if this is the first user (will become admin)
   const isFirstUser = !getAdminConfig()
   
-  initializeUserData(username, password)
+  await initializeUserData(username, password)
   setCurrentUser(username)
   
   // First user becomes admin
@@ -238,8 +249,8 @@ export function registerUser(username: string, password: string): { success: boo
 /**
  * Login an existing user
  */
-export function loginUser(username: string, password: string): { success: boolean; error?: string } {
-  const validation = validateUser(username, password)
+export async function loginUser(username: string, password: string): Promise<{ success: boolean; error?: string }> {
+  const validation = await validateUser(username, password)
   if (!validation.valid) {
     return { success: false, error: validation.error }
   }
@@ -293,11 +304,11 @@ export function saveUserData(userData: UserData, username?: string): void {
 /**
  * Initialize user data with defaults
  */
-export function initializeUserData(username: string, password: string): UserData {
+export async function initializeUserData(username: string, password: string): Promise<UserData> {
   const userData: UserData = {
     diagrams: [],
     currentDiagramId: null,
-    passwordHash: hashPassword(password),
+    passwordHash: await hashPassword(password),
     settings: {
       snapToGrid: true,
       language: 'zh',

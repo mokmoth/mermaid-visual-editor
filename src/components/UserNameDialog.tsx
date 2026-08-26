@@ -51,7 +51,7 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
     }
   }, [username])
 
-  const handleLogin = useCallback((e: React.FormEvent) => {
+  const handleLogin = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!password) {
@@ -59,7 +59,7 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
       return
     }
     
-    const result = loginUser(username.trim(), password)
+    const result = await loginUser(username.trim(), password)
     if (result.success) {
       onConfirm(username.trim())
     } else {
@@ -67,7 +67,7 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
     }
   }, [username, password, onConfirm])
 
-  const handleRegister = useCallback((e: React.FormEvent) => {
+  const handleRegister = useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
     
     if (!password) {
@@ -85,7 +85,7 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
       return
     }
     
-    const result = registerUser(username.trim(), password)
+    const result = await registerUser(username.trim(), password)
     if (result.success) {
       onConfirm(username.trim())
     } else {

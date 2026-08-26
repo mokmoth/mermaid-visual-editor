@@ -17,6 +17,7 @@ npm run dev
 ```bash
 npm run build    # 产出 dist/
 npm run preview  # 预览生产构建
+npm test         # 单元测试
 ```
 
 ## 当前能力

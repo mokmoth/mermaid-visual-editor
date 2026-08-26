@@ -1,6 +1,7 @@
 import { memo, useCallback } from 'react'
 import type { StateNode as StateNodeType } from './types'
 import type { ResizeHandle } from '@/core/types'
+import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface StateNodeProps {
   state: StateNodeType
@@ -56,11 +57,13 @@ export const StateNodeComponent = memo(({
   return (
     <g
       transform={`translate(${state.x}, ${state.y})`}
+      {...interactiveA11y(state.name || state.type, selected)}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
       onDoubleClick={onDoubleClick}
+      onKeyDown={(e) => activateOnEnterOrSpace(e, () => onPointerDown(e as unknown as React.PointerEvent))}
       style={{ cursor: 'move' }}
     >
       {renderStateShape(state, size, selected, isHovered)}

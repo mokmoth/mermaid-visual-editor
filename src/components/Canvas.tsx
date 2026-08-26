@@ -15,6 +15,7 @@ import type {
 } from '@/types'
 import { getNodeSize } from '@/utils/nodeSize'
 import { calculateFitToView, calculateFlowchartBounds } from '@/utils/geometry'
+import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface CanvasProps {
   nodes: GraphNode[]
@@ -372,6 +373,8 @@ export const Canvas = memo(({
   return (
     <div
       ref={containerRef}
+      role="application"
+      aria-label="流程图画布"
       className={`absolute inset-0 overflow-hidden grid-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       style={{
         backgroundPosition: `${editorView.x}px ${editorView.y}px`,
@@ -551,6 +554,7 @@ export const Canvas = memo(({
           return (
             <div
               key={node.id}
+              {...interactiveA11y(node.label || node.id, isSel || isMultiSel)}
               style={{
                 position: 'absolute',
                 left: node.x,
@@ -562,6 +566,7 @@ export const Canvas = memo(({
               className={`cursor-${mode === 'select' ? 'move' : 'crosshair'} pointer-events-auto ${isMultiSel ? 'ring-2 ring-blue-300 ring-opacity-50' : ''}`}
               onPointerDown={(e) => handleNodePointerDown(e, node.id)}
               onPointerUp={(e) => handleNodePointerUp(e, node.id)}
+              onKeyDown={(e) => activateOnEnterOrSpace(e, () => onSelectionChange({ type: 'node', id: node.id }))}
               onMouseEnter={() => onHoverNode(node.id)}
               onMouseLeave={() => onHoverNode(null)}
             >

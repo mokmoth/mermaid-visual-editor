@@ -459,8 +459,8 @@ export const ERSidebar = memo(({
 
         {/* Stats */}
         <div className="p-4 border-t border-gray-200 text-xs text-gray-500">
-          <p>Entities: {state.entities.length}</p>
-          <p>Relationships: {state.relationships.length}</p>
+          <p>{t('sidebar.statsEntities', { count: state.entities.length })}</p>
+          <p>{t('sidebar.statsRelationships', { count: state.relationships.length })}</p>
         </div>
       </div>
 

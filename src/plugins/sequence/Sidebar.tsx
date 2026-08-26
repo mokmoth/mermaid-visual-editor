@@ -456,8 +456,8 @@ export const SequenceSidebar = memo(({
 
         {/* Stats */}
         <div className="p-4 border-t border-gray-200 text-xs text-gray-500">
-          <p>Participants: {state.participants.length}</p>
-          <p>Messages: {state.messages.length}</p>
+          <p>{t('sidebar.statsParticipants', { count: state.participants.length })}</p>
+          <p>{t('sidebar.statsMessages', { count: state.messages.length })}</p>
         </div>
       </div>
 
