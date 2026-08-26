@@ -5,9 +5,9 @@ import { useState, useCallback } from 'react'
  * @param initialState - The initial state value
  * @returns Tuple of [present, set, undo, redo, canUndo, canRedo, replace]
  */
-export function useUndoRedo<T>(initialState: T) {
+export function useUndoRedo<T>(initialValue: T | (() => T)) {
   const [past, setPast] = useState<T[]>([])
-  const [present, setPresent] = useState<T>(initialState)
+  const [present, setPresent] = useState<T>(initialValue)
   const [future, setFuture] = useState<T[]>([])
 
   const canUndo = past.length > 0
@@ -35,12 +35,16 @@ export function useUndoRedo<T>(initialState: T) {
     setPresent(next)
   }, [past, present, future])
 
-  const set = useCallback((newPresent: T, clearFuture = true) => {
-    if (newPresent === present) return
+  const set = useCallback((newPresent: T | ((prev: T) => T), clearFuture = true) => {
+    const resolvedPresent = typeof newPresent === 'function' 
+      ? (newPresent as (prev: T) => T)(present) 
+      : newPresent
+
+    if (resolvedPresent === present) return
     
-    setPast(prev => [...prev, present])
+    setPast(prevPast => [...prevPast, present])
     if (clearFuture) setFuture([])
-    setPresent(newPresent)
+    setPresent(resolvedPresent)
   }, [present])
 
   // Update current state without recording history (for continuous operations like dragging)

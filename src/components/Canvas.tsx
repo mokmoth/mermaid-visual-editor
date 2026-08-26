@@ -1,10 +1,11 @@
-import { memo, useRef, useCallback, RefObject } from 'react'
+import { memo, useRef, useCallback, useEffect, useState, useMemo, RefObject } from 'react'
 import { NodeVisual } from './NodeVisual'
 import { LinkRenderer } from './LinkRenderer'
 import { Icon, Icons } from './Icons'
 import type {
   GraphNode,
   GraphLink,
+  Swimlane,
   Selection,
   ViewState,
   EditorMode,
@@ -13,10 +14,12 @@ import type {
   ResizeHandle
 } from '@/types'
 import { getNodeSize } from '@/utils/nodeSize'
+import { calculateFitToView, calculateFlowchartBounds } from '@/utils/geometry'
 
 interface CanvasProps {
   nodes: GraphNode[]
   links: GraphLink[]
+  swimlanes: Swimlane[]
   selection: Selection | null
   multiSelect: Set<string>
   mode: EditorMode
@@ -48,11 +51,16 @@ interface CanvasProps {
   onFinishEditing: () => void
   onHoverNode: (nodeId: string | null) => void
   onAddLink: (link: GraphLink) => void
+  onSwimlaneSelect?: (swimlaneId: string) => void
+  onSwimlaneDragStart?: (swimlaneId: string, e: React.PointerEvent) => void
+  onSwimlaneResizeStart?: (e: React.PointerEvent, swimlane: Swimlane, handle: ResizeHandle) => void
+  onMultiResizeStart?: (nodeIds: Set<string>, e: React.PointerEvent, handle: ResizeHandle) => void
 }
 
 export const Canvas = memo(({
   nodes,
   links,
+  swimlanes,
   selection,
   multiSelect,
   mode,
@@ -83,25 +91,102 @@ export const Canvas = memo(({
   onTempLabelChange,
   onFinishEditing,
   onHoverNode,
-  onAddLink
+  onAddLink,
+  onSwimlaneSelect,
+  onSwimlaneDragStart,
+  onSwimlaneResizeStart,
+  onMultiResizeStart
 }: CanvasProps) => {
   const clickTracker = useRef({ id: null as string | null, time: 0 })
+  const [isSpacePressed, setIsSpacePressed] = useState(false)
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault()
-    const scaleAmount = -e.deltaY * 0.001
-    const newScale = Math.min(Math.max(0.2, editorView.scale + scaleAmount), 5)
-    const rect = e.currentTarget.getBoundingClientRect()
-    const mouseX = e.clientX - rect.left
-    const mouseY = e.clientY - rect.top
-    const worldX = (mouseX - editorView.x) / editorView.scale
-    const worldY = (mouseY - editorView.y) / editorView.scale
-    onViewChange({
-      x: mouseX - worldX * newScale,
-      y: mouseY - worldY * newScale,
-      scale: newScale
+  // Track spacebar state for pan mode
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !e.repeat) {
+        setIsSpacePressed(true)
+      }
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        setIsSpacePressed(false)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+    }
+  }, [])
+
+  // Calculate bounding box for multi-selected nodes and swimlanes
+  const multiSelectBounds = useMemo(() => {
+    if (multiSelect.size < 2) return null
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity
+
+    multiSelect.forEach(itemId => {
+      // Check if it's a node
+      const node = nodes.find(n => n.id === itemId)
+      if (node) {
+        const { width, height } = getNodeSize(node.type, node.label, node.customWidth, node.customHeight)
+        minX = Math.min(minX, node.x)
+        minY = Math.min(minY, node.y)
+        maxX = Math.max(maxX, node.x + width)
+        maxY = Math.max(maxY, node.y + height)
+        return
+      }
+
+      // Check if it's a swimlane
+      const swimlane = swimlanes.find(s => s.id === itemId)
+      if (swimlane) {
+        minX = Math.min(minX, swimlane.x)
+        minY = Math.min(minY, swimlane.y)
+        maxX = Math.max(maxX, swimlane.x + swimlane.width)
+        maxY = Math.max(maxY, swimlane.y + swimlane.height)
+      }
     })
+
+    if (minX === Infinity) return null
+    return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+  }, [multiSelect, nodes, swimlanes])
+
+  const handleWheel = useCallback((e: WheelEvent) => {
+    e.preventDefault()
+    const target = e.currentTarget as HTMLElement
+    const rect = target.getBoundingClientRect()
+
+    // Pinch-to-zoom (ctrlKey is set on trackpad pinch)
+    if (e.ctrlKey || e.metaKey) {
+      const scaleAmount = -e.deltaY * 0.01
+      const newScale = Math.min(Math.max(0.2, editorView.scale + scaleAmount), 5)
+      const mouseX = e.clientX - rect.left
+      const mouseY = e.clientY - rect.top
+      const worldX = (mouseX - editorView.x) / editorView.scale
+      const worldY = (mouseY - editorView.y) / editorView.scale
+      onViewChange({
+        x: mouseX - worldX * newScale,
+        y: mouseY - worldY * newScale,
+        scale: newScale
+      })
+    } else {
+      // Two-finger scroll = pan view
+      onViewChange({
+        x: editorView.x - e.deltaX,
+        y: editorView.y - e.deltaY,
+        scale: editorView.scale
+      })
+    }
   }, [editorView, onViewChange])
+
+  // Use non-passive wheel event listener to allow preventDefault
+  useEffect(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
 
   const getCanvasPos = useCallback((e: React.PointerEvent) => {
     const container = containerRef.current
@@ -120,19 +205,22 @@ export const Canvas = memo(({
     }
 
     if (e.button === 0 || e.button === 1) {
-      // Shift + drag = box select
-      if (e.shiftKey && mode === 'select') {
-        onBoxSelectStart(e)
-      } else {
+      if (isSpacePressed || e.button === 1) {
+        // Space + left-click or middle-click = pan
         onPanStart(e)
+      } else if (mode === 'select') {
+        // Left-click drag on background = box select
+        onBoxSelectStart(e)
+        // Don't clear selection when starting box select
+        return
       }
     }
 
-    if (!e.shiftKey && !boxSelect) {
+    if (!boxSelect && !isSpacePressed && e.button === 0) {
       onSelectionChange(null)
       onMultiSelectChange(new Set())
     }
-  }, [editingNodeId, editingLinkId, mode, boxSelect, onFinishEditing, onBoxSelectStart, onPanStart, onSelectionChange, onMultiSelectChange])
+  }, [editingNodeId, editingLinkId, mode, boxSelect, isSpacePressed, onFinishEditing, onBoxSelectStart, onPanStart, onSelectionChange, onMultiSelectChange])
 
   const handleCanvasPointerMove = useCallback((e: React.PointerEvent) => {
     if (drawingLink && containerRef.current) {
@@ -150,6 +238,17 @@ export const Canvas = memo(({
       onDrawingLinkCancel()
     }
   }, [drawingLink, mode, onDrawingLinkCancel])
+
+  // Fit all content to view
+  const handleFitToView = useCallback(() => {
+    const container = containerRef.current
+    if (!container) return
+
+    const rect = container.getBoundingClientRect()
+    const bounds = calculateFlowchartBounds(nodes, swimlanes)
+    const newView = calculateFitToView(bounds, rect.width, rect.height)
+    onViewChange(newView)
+  }, [containerRef, nodes, swimlanes, onViewChange])
 
   const handleNodePointerDown = useCallback((e: React.PointerEvent, nodeId: string) => {
     e.stopPropagation()
@@ -169,11 +268,23 @@ export const Canvas = memo(({
       onDrawingLinkMove(pos.x, pos.y)
       onSelectionChange(null)
     } else {
-      // Check if multi-select drag
-      if (multiSelect.has(nodeId)) {
+      // Shift+click = toggle selection in multi-select
+      if (e.shiftKey) {
+        const newSet = new Set(multiSelect)
+        if (newSet.has(nodeId)) {
+          newSet.delete(nodeId)
+        } else {
+          newSet.add(nodeId)
+        }
+        onMultiSelectChange(newSet)
+        onSelectionChange(null)
+      } else if (multiSelect.has(nodeId)) {
+        // Click on already multi-selected node = drag all
         onMultiDragStart(multiSelect, e)
       } else {
+        // Normal click = single select and drag
         onSelectionChange({ type: 'node', id: nodeId })
+        onMultiSelectChange(new Set())
         onDragStart(nodeId, e)
       }
     }
@@ -224,15 +335,48 @@ export const Canvas = memo(({
     onSelectionChange({ type: 'link', id: linkId })
   }, [onEditLink, onSelectionChange])
 
+  const handleSwimlanePointerDown = useCallback((e: React.PointerEvent, swimlaneId: string) => {
+    e.stopPropagation()
+    if (editingNodeId || editingLinkId) {
+      onFinishEditing()
+      return
+    }
+
+    // Shift+click = toggle selection in multi-select
+    if (e.shiftKey) {
+      const newSet = new Set(multiSelect)
+      if (newSet.has(swimlaneId)) {
+        newSet.delete(swimlaneId)
+      } else {
+        newSet.add(swimlaneId)
+      }
+      onMultiSelectChange(newSet)
+      onSelectionChange(null)
+    } else if (multiSelect.has(swimlaneId)) {
+      // Click on already multi-selected swimlane = drag all
+      onMultiDragStart(multiSelect, e)
+    } else {
+      // Normal click = single select and drag
+      onSelectionChange({ type: 'swimlane', id: swimlaneId })
+      onMultiSelectChange(new Set())
+      onSwimlaneSelect?.(swimlaneId)
+      onSwimlaneDragStart?.(swimlaneId, e)
+    }
+  }, [editingNodeId, editingLinkId, multiSelect, onFinishEditing, onSelectionChange, onMultiSelectChange, onMultiDragStart, onSwimlaneSelect, onSwimlaneDragStart])
+
+  const handleSwimlaneResizePointerDown = useCallback((e: React.PointerEvent, swimlane: Swimlane, handle: ResizeHandle) => {
+    e.stopPropagation()
+    onSwimlaneResizeStart?.(e, swimlane, handle)
+  }, [onSwimlaneResizeStart])
+
   return (
     <div
       ref={containerRef}
-      className="flex-1 relative overflow-hidden grid-bg cursor-grab active:cursor-grabbing"
+      className={`absolute inset-0 overflow-hidden grid-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       style={{
         backgroundPosition: `${editorView.x}px ${editorView.y}px`,
         backgroundSize: `${20 * editorView.scale}px ${20 * editorView.scale}px`
       }}
-      onWheel={handleWheel}
       onPointerDown={handleCanvasPointerDown}
       onPointerMove={handleCanvasPointerMove}
       onPointerUp={handleCanvasPointerUp}
@@ -245,6 +389,142 @@ export const Canvas = memo(({
           height: '100%'
         }}
       >
+        {/* Swimlanes (render behind nodes and links) */}
+        {swimlanes.map(swimlane => {
+          const isSel = selection?.type === 'swimlane' && selection.id === swimlane.id
+          const isMultiSel = multiSelect.has(swimlane.id)
+          const isHorizontal = swimlane.orientation === 'horizontal'
+          const headerHeight = 36
+          const lanes = swimlane.lanes || []
+          const laneCount = lanes.length || 1
+          const contentHeight = swimlane.height - headerHeight
+          const contentWidth = swimlane.width
+
+          return (
+            <div
+              key={swimlane.id}
+              style={{
+                position: 'absolute',
+                left: swimlane.x,
+                top: swimlane.y,
+                width: swimlane.width,
+                height: swimlane.height,
+                zIndex: 1,
+                pointerEvents: 'auto'
+              }}
+              className={isMultiSel ? 'ring-2 ring-blue-300 ring-opacity-50' : ''}
+            >
+              {/* Swimlane content wrapper */}
+              <div
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  backgroundColor: swimlane.color || '#f0f9ff',
+                  border: isSel || isMultiSel ? '2px solid #3b82f6' : '2px solid #94a3b8',
+                  borderRadius: 8,
+                  overflow: 'hidden'
+                }}
+                className="cursor-move"
+                onPointerDown={(e) => handleSwimlanePointerDown(e, swimlane.id)}
+              >
+                {/* Swimlane header */}
+                <div
+                  style={{
+                    height: headerHeight,
+                    padding: '8px 12px',
+                    borderBottom: '1px solid #94a3b8',
+                    backgroundColor: 'rgba(255,255,255,0.7)',
+                    fontWeight: 600,
+                    fontSize: 14,
+                    color: '#334155',
+                    display: 'flex',
+                    alignItems: 'center'
+                  }}
+                >
+                  {swimlane.name}
+                </div>
+
+                {/* Lanes container */}
+                <div
+                  style={{
+                    display: 'flex',
+                    flexDirection: isHorizontal ? 'column' : 'row',
+                    height: contentHeight,
+                    width: contentWidth
+                  }}
+                >
+                  {lanes.map((lane, index) => {
+                    const isLastLane = index === laneCount - 1
+
+                    return (
+                      <div
+                        key={lane.id}
+                        style={{
+                          flex: 1,
+                          display: 'flex',
+                          borderRight: !isHorizontal && !isLastLane ? '1px dashed #94a3b8' : 'none',
+                          borderBottom: isHorizontal && !isLastLane ? '1px dashed #94a3b8' : 'none',
+                          position: 'relative'
+                        }}
+                      >
+                        {/* Lane label */}
+                        <div
+                          style={{
+                            position: 'absolute',
+                            left: isHorizontal ? 4 : '50%',
+                            top: isHorizontal ? '50%' : 4,
+                            transform: isHorizontal ? 'translateY(-50%)' : 'translateX(-50%)',
+                            fontSize: 12,
+                            color: '#64748b',
+                            fontWeight: 500,
+                            backgroundColor: 'rgba(255,255,255,0.8)',
+                            padding: '2px 6px',
+                            borderRadius: 4,
+                            whiteSpace: 'nowrap',
+                            pointerEvents: 'none'
+                          }}
+                        >
+                          {lane.name}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Resize handles - outside overflow:hidden container */}
+              {isSel && (
+                <>
+                  {(['nw', 'ne', 'sw', 'se'] as ResizeHandle[]).map(handle => {
+                    const isTop = handle.includes('n')
+                    const isLeft = handle.includes('w')
+                    return (
+                      <div
+                        key={handle}
+                        style={{
+                          position: 'absolute',
+                          width: 10,
+                          height: 10,
+                          backgroundColor: '#3b82f6',
+                          border: '2px solid white',
+                          borderRadius: 2,
+                          cursor: `${handle}-resize`,
+                          top: isTop ? -5 : 'auto',
+                          bottom: isTop ? 'auto' : -5,
+                          left: isLeft ? -5 : 'auto',
+                          right: isLeft ? 'auto' : -5,
+                          zIndex: 100
+                        }}
+                        onPointerDown={(e) => handleSwimlaneResizePointerDown(e, swimlane, handle)}
+                      />
+                    )
+                  })}
+                </>
+              )}
+            </div>
+          )
+        })}
+
         {/* Links */}
         <LinkRenderer
           links={links}
@@ -255,7 +535,7 @@ export const Canvas = memo(({
           onLinkDoubleClick={handleLinkDoubleClick}
           drawingLink={drawingLink}
           tempLabel={tempLabel}
-          setTempLabel={onTempLabelChange}
+          onTempLabelChange={onTempLabelChange}
           finishEditing={onFinishEditing}
           inputRef={inputRef}
         />
@@ -316,6 +596,53 @@ export const Canvas = memo(({
             }}
           />
         )}
+
+        {/* Multi-select bounding box with resize handles */}
+        {multiSelectBounds && onMultiResizeStart && (
+          <div
+            style={{
+              position: 'absolute',
+              left: multiSelectBounds.x - 8,
+              top: multiSelectBounds.y - 8,
+              width: multiSelectBounds.width + 16,
+              height: multiSelectBounds.height + 16,
+              border: '2px dashed #3b82f6',
+              backgroundColor: 'transparent',
+              pointerEvents: 'none',
+              zIndex: 20
+            }}
+          >
+            {/* Resize handles */}
+            {(['nw', 'ne', 'sw', 'se'] as ResizeHandle[]).map(handle => {
+              const isTop = handle.includes('n')
+              const isLeft = handle.includes('w')
+              return (
+                <div
+                  key={handle}
+                  style={{
+                    position: 'absolute',
+                    width: 10,
+                    height: 10,
+                    backgroundColor: '#3b82f6',
+                    border: '2px solid white',
+                    borderRadius: 2,
+                    cursor: `${handle}-resize`,
+                    top: isTop ? -5 : 'auto',
+                    bottom: isTop ? 'auto' : -5,
+                    left: isLeft ? -5 : 'auto',
+                    right: isLeft ? 'auto' : -5,
+                    pointerEvents: 'auto',
+                    zIndex: 100
+                  }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation()
+                    onMultiResizeStart(multiSelect, e, handle)
+                  }}
+                />
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Zoom indicator */}
@@ -324,8 +651,9 @@ export const Canvas = memo(({
           {(editorView.scale * 100).toFixed(0)}%
         </div>
         <button
-          onClick={() => onViewChange({ x: 0, y: 0, scale: 1 })}
+          onClick={handleFitToView}
           className="p-1 hover:bg-gray-100 rounded text-gray-600"
+          title="适应视图"
         >
           <Icon path={Icons.Reset} size={14} />
         </button>

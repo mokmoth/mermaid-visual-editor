@@ -8,18 +8,28 @@ export type ExportFormat = 'svg' | 'png' | 'pdf'
 export async function exportDiagram(
   mermaidElement: HTMLElement | null,
   format: ExportFormat
-): Promise<void> {
-  if (!mermaidElement) return
+): Promise<{ success: boolean; error?: string }> {
+  if (!mermaidElement) {
+    return { success: false, error: '未找到图表元素' }
+  }
 
   const svgEl = mermaidElement.querySelector('svg')
-  if (!svgEl) return
+  if (!svgEl) {
+    return { success: false, error: '未找到 SVG 元素' }
+  }
 
-  const svgData = new XMLSerializer().serializeToString(svgEl)
+  try {
+    const svgData = new XMLSerializer().serializeToString(svgEl)
 
-  if (format === 'svg') {
-    downloadSVG(svgData)
-  } else {
-    await downloadRaster(svgEl, svgData, format)
+    if (format === 'svg') {
+      downloadSVG(svgData)
+    } else {
+      await downloadRaster(svgEl, svgData, format)
+    }
+    return { success: true }
+  } catch (e) {
+    console.error('导出失败:', e)
+    return { success: false, error: (e as Error).message }
   }
 }
 
@@ -38,7 +48,7 @@ async function downloadRaster(
   svgData: string,
   format: 'png' | 'pdf'
 ): Promise<void> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const canvas = document.createElement('canvas')
     const img = new Image()
     const bbox = svgEl.viewBox.baseVal || svgEl.getBoundingClientRect()
@@ -50,7 +60,7 @@ async function downloadRaster(
     img.onload = () => {
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        resolve()
+        reject(new Error('无法创建 Canvas 上下文'))
         return
       }
 
@@ -88,6 +98,8 @@ async function downloadRaster(
       resolve()
     }
 
+    img.onerror = () => reject(new Error('图片加载失败'))
+
     img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
   })
 }
@@ -98,14 +110,21 @@ async function downloadRaster(
 export function saveToLocalStorage(data: {
   nodes: unknown[]
   links: unknown[]
+  swimlanes?: unknown[]
   direction: string
-}): void {
-  const saveData = {
-    ...data,
-    version: '2.0',
-    timestamp: Date.now()
+}): boolean {
+  try {
+    const saveData = {
+      ...data,
+      version: '2.0',
+      timestamp: Date.now()
+    }
+    localStorage.setItem('mermaid-editor-data', JSON.stringify(saveData))
+    return true
+  } catch (e) {
+    console.error('保存到本地存储失败:', e)
+    return false
   }
-  localStorage.setItem('mermaid-editor-data', JSON.stringify(saveData))
 }
 
 /**
@@ -114,6 +133,7 @@ export function saveToLocalStorage(data: {
 export function loadFromLocalStorage(): {
   nodes: unknown[]
   links: unknown[]
+  swimlanes?: unknown[]
   direction: string
 } | null {
   const saved = localStorage.getItem('mermaid-editor-data')

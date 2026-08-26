@@ -68,6 +68,26 @@ export const NodeVisual = memo(({
             <line x1={width - 10} y1="1" x2={width - 10} y2={height - 1} className={borderClass} />
           </g>
         )
+      case 'flag':
+        // Asymmetric flag shape: A>text]
+        return <path d={`M1 1 L${width - Math.min(20, width * 0.2)} 1 L${width - 1} ${height / 2} L${width - Math.min(20, width * 0.2)} ${height - 1} L1 ${height - 1} Z`} className={`${bgClass} ${borderClass}`} />
+      case 'trapezoid':
+        // Trapezoid: narrower at top, wider at bottom
+        return <path d={`M${Math.min(20, width * 0.15)} 1 L${width - Math.min(20, width * 0.15)} 1 L${width - 1} ${height - 1} L1 ${height - 1} Z`} className={`${bgClass} ${borderClass}`} />
+      case 'trapezoid_alt':
+        // Inverted trapezoid: wider at top, narrower at bottom
+        return <path d={`M1 1 L${width - 1} 1 L${width - Math.min(20, width * 0.15)} ${height - 1} L${Math.min(20, width * 0.15)} ${height - 1} Z`} className={`${bgClass} ${borderClass}`} />
+      case 'double_circle':
+        // Double circle with inner and outer rings
+        return (
+          <g>
+            <ellipse cx={width / 2} cy={height / 2} rx={width / 2 - 1} ry={height / 2 - 1} className={`${bgClass} ${borderClass}`} />
+            <ellipse cx={width / 2} cy={height / 2} rx={width / 2 - 6} ry={height / 2 - 6} className={borderClass} fill="none" />
+          </g>
+        )
+      case 'parallelogram_alt':
+        // Reverse parallelogram (slanted the other way)
+        return <path d={`M1 1 L${width - Math.min(20, width * 0.2)} 1 L${width - 1} ${height - 1} L${Math.min(20, width * 0.2)} ${height - 1} Z`} className={`${bgClass} ${borderClass}`} />
       default:
         return <rect x="1" y="1" width={width - 2} height={height - 2} className={`${bgClass} ${borderClass}`} />
     }
@@ -115,7 +135,7 @@ export const NodeVisual = memo(({
               textOverflow: 'ellipsis'
             }}
           >
-            {node.label}
+            {node.label.replace(/<br\s*\/?>/gi, '\n')}
           </span>
         )}
       </div>

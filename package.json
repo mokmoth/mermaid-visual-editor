@@ -1,9 +1,9 @@
 {
-  "name": "mermaid-visual-editor",
-  "version": "1.0.0",
+  "name": "rls-mermaid-tool",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
-  "description": "A visual editor for creating Mermaid flowcharts",
+  "description": "RL's Mermaid Tool - A visual editor for creating multiple types of Mermaid diagrams",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
@@ -13,9 +13,11 @@
   "dependencies": {
     "dagre": "^0.8.5",
     "jspdf": "^2.5.1",
-    "mermaid": "^10.9.0",
+    "mermaid": "^11.12.2",
+    "prism-react-renderer": "^2.4.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-simple-code-editor": "^0.14.1",
     "zustand": "^4.5.0"
   },
   "devDependencies": {

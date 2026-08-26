@@ -1,4 +1,82 @@
-import type { GraphNode, GraphLink, FlowDirection } from '@/types'
+import type { GraphNode, GraphLink, FlowDirection, Swimlane } from '@/types'
+
+/**
+ * Sanitize Mermaid code to fix common syntax issues before rendering
+ * This helps handle code from external sources (like AI-generated code)
+ */
+export function sanitizeMermaidCode(code: string): string {
+  const lines = code.split('\n')
+  const result: string[] = []
+  
+  for (const line of lines) {
+    let processed = line
+    
+    // Match node definitions with square brackets: ID[label] or ID["label"]
+    // Also handles nested brackets for subroutine [[]], database [()], stadium ([])
+    processed = processed.replace(
+      /([A-Za-z_][A-Za-z0-9_]*)\s*(\[\[|\[\(|\(\[|\[)([^\]]*?)(\]\]|\)\]|\]\)|\])/g,
+      (match, id, openBracket, label, closeBracket) => {
+        return fixLabel(match, id, openBracket, label, closeBracket)
+      }
+    )
+    
+    // Match node definitions with parentheses: ID(label), ID((label)), ID(((label)))
+    processed = processed.replace(
+      /([A-Za-z_][A-Za-z0-9_]*)\s*(\(\(\(|\(\(|\()([^)]*?)(\)\)\)|\)\)|\))/g,
+      (match, id, openBracket, label, closeBracket) => {
+        return fixLabel(match, id, openBracket, label, closeBracket)
+      }
+    )
+    
+    // Match node definitions with curly braces: ID{label}, ID{{label}}
+    processed = processed.replace(
+      /([A-Za-z_][A-Za-z0-9_]*)\s*(\{\{|\{)([^}]*?)(\}\}|\})/g,
+      (match, id, openBracket, label, closeBracket) => {
+        return fixLabel(match, id, openBracket, label, closeBracket)
+      }
+    )
+    
+    result.push(processed)
+  }
+  
+  return result.join('\n')
+}
+
+/**
+ * Fix label syntax issues: when label contains <br/>, internal quotes must be escaped
+ */
+function fixLabel(
+  match: string,
+  id: string,
+  openBracket: string,
+  label: string,
+  closeBracket: string
+): string {
+  // Check if label contains <br/> (which requires quoting)
+  const hasBr = /<br\s*\/?>/i.test(label)
+  
+  if (!hasBr) {
+    return match // No fix needed
+  }
+  
+  // Check if already quoted
+  const isQuoted = label.startsWith('"') && label.endsWith('"')
+  
+  if (isQuoted) {
+    // Extract inner content and fix any internal quotes
+    const inner = label.slice(1, -1)
+    if (inner.includes('"')) {
+      const fixed = inner.replace(/"/g, "'")
+      return `${id}${openBracket}"${fixed}"${closeBracket}`
+    }
+    return match // Already properly quoted
+  }
+  
+  // Not quoted but has <br/> - need to quote it
+  // First, replace any internal quotes with single quotes
+  const fixed = label.replace(/"/g, "'")
+  return `${id}${openBracket}"${fixed}"${closeBracket}`
+}
 
 /**
  * Wrap long text with line breaks
@@ -37,23 +115,24 @@ function wrapText(text: string, maxChars = 12): string {
  * Generate Mermaid code from graph state
  */
 export function generateMermaidCode(
-  nodes: GraphNode[], 
-  links: GraphLink[], 
-  direction: FlowDirection
+  nodes: GraphNode[],
+  links: GraphLink[],
+  direction: FlowDirection,
+  swimlanes: Swimlane[] = []
 ): string {
-  let code = `flowchart ${direction}\n    classDef default fill:#fff,stroke:#333,stroke-width:2px;\n`
-  
-  // Generate node definitions
-  nodes.forEach(node => {
+  let code = `flowchart ${direction}\n`
+
+  // Helper to generate node shape
+  const generateNodeShape = (node: GraphNode): string => {
     let labelText = node.label
     if (!labelText || labelText.trim() === '') labelText = ' '
-    
+
     // Clean and wrap long text
     const cleanLabel = labelText.replace(/"/g, "'")
     const wrappedLabel = wrapText(cleanLabel, 12)
     const needsQuotes = wrappedLabel.includes('<br/>')
     const finalLabel = needsQuotes ? `"${wrappedLabel}"` : wrappedLabel
-    
+
     let shape = `[${finalLabel}]`
     switch (node.type) {
       case 'rect': shape = `[${finalLabel}]`; break
@@ -65,11 +144,74 @@ export function generateMermaidCode(
       case 'database': shape = `[(${finalLabel})]`; break
       case 'hexagon': shape = `{{${finalLabel}}}`; break
       case 'parallelogram': shape = `[/${finalLabel}/]`; break
+      case 'flag': shape = `>${finalLabel}]`; break
+      case 'trapezoid': shape = `[/${wrappedLabel}\\]`; break
+      case 'trapezoid_alt': shape = `[\\${wrappedLabel}/]`; break
+      case 'double_circle': shape = `(((${wrappedLabel})))`; break
+      case 'parallelogram_alt': shape = `[\\${wrappedLabel}\\]`; break
       default: shape = `[${finalLabel}]`
     }
-    code += `    ${node.id}${shape}\n`
+    return `${node.id}${shape}`
+  }
+
+  // Group nodes by swimlane and lane
+  const nodesInLanes = new Map<string, GraphNode[]>() // key: "swimlaneId:laneId"
+  const nodesInSwimlanes = new Map<string, GraphNode[]>() // nodes in swimlane but not in specific lane
+  const nodesWithoutSwimlane: GraphNode[] = []
+
+  nodes.forEach(node => {
+    if (node.swimlaneId && swimlanes.some(s => s.id === node.swimlaneId)) {
+      if (node.laneId) {
+        const key = `${node.swimlaneId}:${node.laneId}`
+        if (!nodesInLanes.has(key)) {
+          nodesInLanes.set(key, [])
+        }
+        nodesInLanes.get(key)!.push(node)
+      } else {
+        if (!nodesInSwimlanes.has(node.swimlaneId)) {
+          nodesInSwimlanes.set(node.swimlaneId, [])
+        }
+        nodesInSwimlanes.get(node.swimlaneId)!.push(node)
+      }
+    } else {
+      nodesWithoutSwimlane.push(node)
+    }
   })
-  
+
+  // Generate swimlanes with nested lane subgraphs
+  swimlanes.forEach(swimlane => {
+    code += `    subgraph ${swimlane.id}["${swimlane.name}"]\n`
+    // Set direction based on swimlane orientation
+    // horizontal orientation = lanes stacked vertically (column) = TB direction
+    // vertical orientation = lanes arranged horizontally (row) = LR direction
+    const swimlaneDirection = swimlane.orientation === 'horizontal' ? 'TB' : 'LR'
+    code += `        direction ${swimlaneDirection}\n`
+
+    // Generate lane subgraphs
+    swimlane.lanes?.forEach(lane => {
+      const laneKey = `${swimlane.id}:${lane.id}`
+      const laneNodes = nodesInLanes.get(laneKey) || []
+      code += `        subgraph ${lane.id}["${lane.name}"]\n`
+      laneNodes.forEach(node => {
+        code += `            ${generateNodeShape(node)}\n`
+      })
+      code += `        end\n`
+    })
+
+    // Nodes in swimlane but not in specific lane
+    const swimlaneOnlyNodes = nodesInSwimlanes.get(swimlane.id) || []
+    swimlaneOnlyNodes.forEach(node => {
+      code += `        ${generateNodeShape(node)}\n`
+    })
+
+    code += `    end\n`
+  })
+
+  // Generate nodes outside swimlanes
+  nodesWithoutSwimlane.forEach(node => {
+    code += `    ${generateNodeShape(node)}\n`
+  })
+
   // Generate link definitions
   links.forEach(link => {
     const sourceExists = nodes.some(n => n.id === link.source)
@@ -87,20 +229,59 @@ export function generateMermaidCode(
     let src = link.source
     let tgt = link.target
 
+    // Determine the base arrow syntax based on link type and arrow type
+    const isThick = link.type === 'thick'
+    const isDotted = link.type === 'dotted'
+
     if (link.arrow === 'back') {
       [src, tgt] = [tgt, src]
-      arrow = link.type === 'dotted' ? '-.->' : '-->'
+      if (isThick) arrow = '==>'
+      else if (isDotted) arrow = '-.->'
+      else arrow = '-->'
     } else if (link.arrow === 'both') {
-      arrow = link.type === 'dotted' ? '<-.->' : '<-->'
+      if (isThick) arrow = '<==>'
+      else if (isDotted) arrow = '<-.->'
+      else arrow = '<-->'
     } else if (link.arrow === 'none') {
-      arrow = link.type === 'dotted' ? '-.-' : '---'
+      if (isThick) arrow = '==='
+      else if (isDotted) arrow = '-.-'
+      else arrow = '---'
+    } else if (link.arrow === 'circle') {
+      arrow = isDotted ? '-.-o' : '--o'
+    } else if (link.arrow === 'circle_start') {
+      arrow = isDotted ? 'o-.-' : 'o---'
+    } else if (link.arrow === 'circle_both') {
+      arrow = isDotted ? 'o-.-o' : 'o--o'
+    } else if (link.arrow === 'cross') {
+      arrow = isDotted ? '-.-x' : '--x'
+    } else if (link.arrow === 'cross_start') {
+      arrow = isDotted ? 'x-.-' : 'x---'
+    } else if (link.arrow === 'cross_both') {
+      arrow = isDotted ? 'x-.-x' : 'x--x'
     } else {
-      arrow = link.type === 'dotted' ? '-.->' : '-->'
+      // forward arrow (default)
+      if (isThick) arrow = '==>'
+      else if (isDotted) arrow = '-.->'
+      else arrow = '-->'
     }
 
     code += `    ${src} ${arrow}${label} ${tgt}\n`
   })
-  
+
+  // Add swimlane styles for better visual appearance
+  if (swimlanes.length > 0) {
+    code += `\n`
+    // Style for swimlane containers - match editor style
+    swimlanes.forEach(swimlane => {
+      const bgColor = swimlane.color || '#f0f9ff'
+      code += `    style ${swimlane.id} fill:${bgColor},stroke:#94a3b8,stroke-width:2px,rx:8,ry:8\n`
+      // Style for lanes - slightly different shade
+      swimlane.lanes?.forEach(lane => {
+        code += `    style ${lane.id} fill:#ffffff,stroke:#94a3b8,stroke-width:1px,stroke-dasharray:5 5\n`
+      })
+    })
+  }
+
   return code
 }
 
@@ -121,9 +302,15 @@ export function parseMermaidCode(
   const subgraphMap = new Map<string, string[]>()
   let currentSubgraph: string | null = null
 
-  const dirMatch = code.match(/^\s*(?:graph|flowchart)\s+(TD|LR|BT|RL)/)
+  const dirMatch = code.match(/^\s*(?:graph|flowchart)\s+(TD|TB|LR|BT|RL)/i)
   if (dirMatch) {
-    dir = dirMatch[1] === 'BT' ? 'TD' : (dirMatch[1] === 'RL' ? 'LR' : dirMatch[1]) as FlowDirection
+    const parsedDir = dirMatch[1].toUpperCase()
+    // TB is an alias for TD
+    if (parsedDir === 'TB') {
+      dir = 'TD'
+    } else if (['TD', 'LR', 'BT', 'RL'].includes(parsedDir)) {
+      dir = parsedDir as FlowDirection
+    }
   }
 
   const parseNode = (str: string): { id: string; type: string; label: string } | null => {
@@ -136,22 +323,43 @@ export function parseMermaidCode(
       str = str.substring(0, attrIndex).trim()
     }
 
+    // Helper to clean label: remove surrounding quotes and normalize whitespace
+    const cleanLabel = (label: string): string => {
+      let cleaned = label.trim()
+      // Remove surrounding double quotes (Mermaid uses quotes for special chars)
+      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+        cleaned = cleaned.slice(1, -1)
+      }
+      // Remove surrounding single quotes
+      if (cleaned.startsWith("'") && cleaned.endsWith("'")) {
+        cleaned = cleaned.slice(1, -1)
+      }
+      return cleaned
+    }
+
+    // Use greedy matching for labels to handle nested quotes and special chars
+    // The patterns match from the last occurrence of closing brackets
     const patterns = [
-      { type: 'stadium', re: /^([^\s()]+)\s*\(\[(.*?)\]\)$/ },
-      { type: 'subroutine', re: /^([^\s[\]]+)\s*\[\[(.*?)\]\]$/ },
-      { type: 'database', re: /^([^\s[\]]+)\s*\[\((.*?)\)\]$/ },
-      { type: 'circle', re: /^([^\s()]+)\s*\(\((.*?)\)\)$/ },
-      { type: 'hexagon', re: /^([^\s{}]+)\s*\{\{(.*?)\}\}$/ },
-      { type: 'parallelogram', re: /^([^\s[\]/]+)\s*\[\/(.*?)\/\]$/ },
-      { type: 'rhombus', re: /^([^\s{}]+)\s*\{(.*?)\}$/ },
-      { type: 'round', re: /^([^\s()]+)\s*\((.*?)\)$/ },
-      { type: 'rect', re: /^([^\s[\]]+)\s*\[(.*?)\]$/ },
+      { type: 'double_circle', re: /^([^\s()]+)\s*\(\(\(([\s\S]*)\)\)\)$/ },
+      { type: 'stadium', re: /^([^\s()]+)\s*\(\[([\s\S]*)\]\)$/ },
+      { type: 'subroutine', re: /^([^\s[\]]+)\s*\[\[([\s\S]*)\]\]$/ },
+      { type: 'database', re: /^([^\s[\]]+)\s*\[\(([\s\S]*)\)\]$/ },
+      { type: 'circle', re: /^([^\s()]+)\s*\(\(([\s\S]*)\)\)$/ },
+      { type: 'hexagon', re: /^([^\s{}]+)\s*\{\{([\s\S]*)\}\}$/ },
+      { type: 'trapezoid', re: /^([^\s[\]/\\]+)\s*\[\/([\s\S]*)\\]$/ },
+      { type: 'trapezoid_alt', re: /^([^\s[\]/\\]+)\s*\[\\([\s\S]*)\/]$/ },
+      { type: 'parallelogram', re: /^([^\s[\]/]+)\s*\[\/([\s\S]*)\/]$/ },
+      { type: 'parallelogram_alt', re: /^([^\s[\]\\]+)\s*\[\\([\s\S]*)\\]$/ },
+      { type: 'flag', re: /^([^\s>]+)\s*>([\s\S]*)]$/ },
+      { type: 'rhombus', re: /^([^\s{}]+)\s*\{([\s\S]*)\}$/ },
+      { type: 'round', re: /^([^\s()]+)\s*\(([\s\S]*)\)$/ },
+      { type: 'rect', re: /^([^\s[\]]+)\s*\[([\s\S]*)\]$/ },
     ]
 
     for (const p of patterns) {
       const m = str.match(p.re)
       if (m) {
-        return { id: m[1], type: p.type, label: m[2] }
+        return { id: m[1], type: p.type, label: cleanLabel(m[2]) }
       }
     }
 
@@ -221,7 +429,8 @@ export function parseMermaidCode(
     let linkLabel = ''
     let leftPart = ''
     let rightPart = ''
-    let arrowType: 'solid' | 'dotted' = 'solid'
+    let linkType: 'solid' | 'dotted' | 'thick' = 'solid'
+    let arrowEndType: 'arrow' | 'circle' | 'cross' | 'none' = 'arrow'
     let hasBack = false
     let hasForward = false
     let isLink = false
@@ -233,15 +442,16 @@ export function parseMermaidCode(
       linkLabel = inlineLabelMatch[2].trim()
       const arrowStr = inlineLabelMatch[3]
       rightPart = inlineLabelMatch[4].trim()
-      arrowType = arrowStr.includes('.') ? 'dotted' : 'solid'
+      linkType = arrowStr.includes('.') ? 'dotted' : 'solid'
       hasForward = arrowStr.endsWith('>')
       isLink = true
     } else {
       // Pattern 2: Standard arrows with optional |label|
-      const arrowMatch = line.match(/(<)?(-{2,}>|<--{2,}>|<-{2,}|-{1,}\.-{0,}>|<-{1,}\.-{0,}>|<-{1,}\.-{0,}-|={2,}>|<={2,}>|-{3,}|-{1,}\.-{0,}-|\.{3,}>) ?/)
+      // Extended regex to match circle (o) and cross (x) endpoints
+      const arrowMatch = line.match(/(o|x)?(<)?(-{2,}>?|<--{2,}>?|<-{2,}|-{1,}\.-{0,}>?|<-{1,}\.-{0,}>?|<-{1,}\.-{0,}-|={2,}>?|<={2,}>?|-{3,}|-{1,}\.-{0,}-|\.{3,}>?)(o|x)? ?/)
 
       if (arrowMatch && arrowMatch[0].length >= 2) {
-        const arrowStr = arrowMatch[0].trim()
+        const fullMatch = arrowMatch[0].trim()
         const arrowIndex = arrowMatch.index!
         leftPart = line.substring(0, arrowIndex).trim()
         rightPart = line.substring(arrowIndex + arrowMatch[0].length).trim()
@@ -255,9 +465,35 @@ export function parseMermaidCode(
           }
         }
 
-        arrowType = (arrowStr.includes('.') || arrowStr.includes('-.')) ? 'dotted' : 'solid'
-        hasBack = arrowStr.startsWith('<')
-        hasForward = arrowStr.endsWith('>')
+        // Determine link type
+        if (fullMatch.includes('=')) {
+          linkType = 'thick'
+        } else if (fullMatch.includes('.') || fullMatch.includes('-.')) {
+          linkType = 'dotted'
+        } else {
+          linkType = 'solid'
+        }
+
+        // Check for circle or cross endpoints
+        const startChar = arrowMatch[1] // o or x at start
+        const endChar = arrowMatch[4] // o or x at end
+
+        if (startChar === 'o' || endChar === 'o') {
+          arrowEndType = 'circle'
+          hasBack = !!startChar
+          hasForward = !!endChar
+        } else if (startChar === 'x' || endChar === 'x') {
+          arrowEndType = 'cross'
+          hasBack = !!startChar
+          hasForward = !!endChar
+        } else {
+          hasBack = fullMatch.startsWith('<') || !!arrowMatch[2]
+          hasForward = fullMatch.endsWith('>')
+          if (!hasBack && !hasForward) {
+            arrowEndType = 'none'
+          }
+        }
+
         isLink = true
       }
     }
@@ -302,11 +538,23 @@ export function parseMermaidCode(
       })
 
       // Determine arrow type
-      let arrow: 'forward' | 'back' | 'both' | 'none' = 'forward'
-      if (hasBack && hasForward) arrow = 'both'
-      else if (hasBack) arrow = 'back'
-      else if (hasForward) arrow = 'forward'
-      else arrow = 'none'
+      let arrow: 'forward' | 'back' | 'both' | 'none' | 'circle' | 'circle_start' | 'circle_both' | 'cross' | 'cross_start' | 'cross_both' = 'forward'
+      if (arrowEndType === 'circle') {
+        if (hasBack && hasForward) arrow = 'circle_both'
+        else if (hasBack) arrow = 'circle_start'
+        else arrow = 'circle'
+      } else if (arrowEndType === 'cross') {
+        if (hasBack && hasForward) arrow = 'cross_both'
+        else if (hasBack) arrow = 'cross_start'
+        else arrow = 'cross'
+      } else if (arrowEndType === 'none') {
+        arrow = 'none'
+      } else {
+        if (hasBack && hasForward) arrow = 'both'
+        else if (hasBack) arrow = 'back'
+        else if (hasForward) arrow = 'forward'
+        else arrow = 'none'
+      }
 
       // Create links
       for (const srcId of finalSrcIds) {
@@ -316,7 +564,7 @@ export function parseMermaidCode(
             source: srcId,
             target: tgtId,
             label: linkLabel,
-            type: arrowType,
+            type: linkType,
             arrow
           })
         }

@@ -1,26 +1,60 @@
 // Node types for flowchart shapes
-export type NodeType = 
-  | 'rect' 
-  | 'round' 
-  | 'stadium' 
-  | 'circle' 
-  | 'rhombus' 
-  | 'hexagon' 
-  | 'parallelogram' 
-  | 'database' 
+export type NodeType =
+  | 'rect'
+  | 'round'
+  | 'stadium'
+  | 'circle'
+  | 'rhombus'
+  | 'hexagon'
+  | 'parallelogram'
+  | 'database'
   | 'subroutine'
+  | 'flag'
+  | 'trapezoid'
+  | 'trapezoid_alt'
+  | 'double_circle'
+  | 'parallelogram_alt'
 
 // Link line style
-export type LinkType = 'solid' | 'dotted'
+export type LinkType = 'solid' | 'dotted' | 'thick'
 
 // Arrow direction
-export type ArrowType = 'forward' | 'back' | 'both' | 'none'
+export type ArrowType =
+  | 'forward'
+  | 'back'
+  | 'both'
+  | 'none'
+  | 'circle'
+  | 'circle_start'
+  | 'circle_both'
+  | 'cross'
+  | 'cross_start'
+  | 'cross_both'
 
 // Editor mode
 export type EditorMode = 'select' | 'link'
 
 // Flow direction
-export type FlowDirection = 'TD' | 'LR'
+export type FlowDirection = 'TD' | 'LR' | 'BT' | 'RL'
+
+// Swimlane lane within a swimlane container
+export interface SwimlaneLane {
+  id: string
+  name: string
+}
+
+// Swimlane container with multiple lanes
+export interface Swimlane {
+  id: string
+  name: string
+  x: number
+  y: number
+  width: number
+  height: number
+  orientation: 'horizontal' | 'vertical' // horizontal = lanes are rows, vertical = lanes are columns
+  lanes: SwimlaneLane[]
+  color?: string
+}
 
 // Graph node
 export interface GraphNode {
@@ -31,6 +65,8 @@ export interface GraphNode {
   label: string
   customWidth?: number
   customHeight?: number
+  swimlaneId?: string  // Optional swimlane container assignment
+  laneId?: string      // Optional lane within swimlane assignment
 }
 
 // Graph link/edge
@@ -47,11 +83,12 @@ export interface GraphLink {
 export interface GraphState {
   nodes: GraphNode[]
   links: GraphLink[]
+  swimlanes: Swimlane[]
 }
 
 // Selection state
 export interface Selection {
-  type: 'node' | 'link'
+  type: 'node' | 'link' | 'state' | 'transition' | 'class' | 'relationship' | 'entity' | 'participant' | 'message' | 'swimlane'
   id: string
 }
 
