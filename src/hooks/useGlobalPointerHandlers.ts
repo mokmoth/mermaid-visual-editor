@@ -26,7 +26,8 @@ interface GlobalPointerHandlersProps {
   nodes: GraphNode[]
   graphState: GraphState
   setGraphState: (state: GraphState) => void
-  replaceGraphState: (state: GraphState) => void
+  replaceGraphState: (state: GraphState | ((prev: GraphState) => GraphState)) => void
+  commitGraphHistory: () => void
   editorView: ViewState
   setEditorView: (view: ViewState | ((prev: ViewState) => ViewState)) => void
   setPreviewView: (view: ViewState | ((prev: ViewState) => ViewState)) => void
@@ -54,6 +55,7 @@ export function useGlobalPointerHandlers({
   graphState,
   setGraphState,
   replaceGraphState,
+  commitGraphHistory,
   editorView,
   setEditorView,
   setPreviewView,
@@ -124,7 +126,8 @@ export function useGlobalPointerHandlers({
           }
           return n
         })
-        setGraphState({ ...graphState, nodes: updatedNodes })
+        replaceGraphState({ ...graphState, nodes: updatedNodes })
+        commitGraphHistory()
         setDragState(null)
       }
       if (multiDragState) {
@@ -136,15 +139,16 @@ export function useGlobalPointerHandlers({
           }
           return n
         })
-        setGraphState({ ...graphState, nodes: updatedNodes })
+        replaceGraphState({ ...graphState, nodes: updatedNodes })
+        commitGraphHistory()
         setMultiDragState(null)
       }
       if (resizeState) {
-        setGraphState(graphState)
+        commitGraphHistory()
         setResizeState(null)
       }
       if (multiResizeState) {
-        setGraphState(graphState)
+        commitGraphHistory()
         setMultiResizeState(null)
       }
       if (panState) setPanState(null)
@@ -185,7 +189,7 @@ export function useGlobalPointerHandlers({
 
     window.addEventListener('pointerup', handleGlobalPointerUp, true)
     return () => window.removeEventListener('pointerup', handleGlobalPointerUp, true)
-  }, [dragState, multiDragState, resizeState, multiResizeState, panState, boxSelect, nodes, graphState, setGraphState, setDragState, setMultiDragState, setResizeState, setMultiResizeState, setPanState, setBoxSelect, setMultiSelect, setSelection])
+  }, [dragState, multiDragState, resizeState, multiResizeState, panState, boxSelect, nodes, graphState, setGraphState, replaceGraphState, commitGraphHistory, setDragState, setMultiDragState, setResizeState, setMultiResizeState, setPanState, setBoxSelect, setMultiSelect, setSelection])
 
   useEffect(() => {
     const handleGlobalPointerMove = (e: PointerEvent) => {

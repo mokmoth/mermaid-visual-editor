@@ -65,7 +65,8 @@ export function I18nProvider({ children }: { children: ReactNode }) {
       return 'zh'
     }
 
-    return 'en'
+    // Product copy is Chinese-first; default to zh unless the user picked a language.
+    return 'zh'
   })
 
   // Set language and persist to storage

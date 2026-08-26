@@ -62,6 +62,7 @@ interface UnifiedDragHandlersProps {
   getNodesForType: (type: string) => Array<{ id: string; x: number; y: number; [key: string]: any }>
   updateNodesForType: (type: string, nodes: Array<{ id: string; x: number; y: number; [key: string]: any }>) => void
   getNodeSizeForType: (type: string, node: any) => { width: number; height: number }
+  commitHistory: () => void
 }
 
 export function useUnifiedDragHandlers({
@@ -87,7 +88,8 @@ export function useUnifiedDragHandlers({
   setMultiSelect,
   getNodesForType,
   updateNodesForType,
-  getNodeSizeForType
+  getNodeSizeForType,
+  commitHistory
 }: UnifiedDragHandlersProps) {
   // Use refs to always have access to latest state values
   // Refs are updated synchronously during render (before any effects)
@@ -113,6 +115,12 @@ export function useUnifiedDragHandlers({
   // Handle pointer up - finalize drag operations
   useEffect(() => {
     const handleGlobalPointerUp = () => {
+      const hadMutation = !!(
+        dragStateRef.current ||
+        multiDragStateRef.current ||
+        resizeStateRef.current ||
+        multiResizeStateRef.current
+      )
       if (dragStateRef.current) {
         setDragState(null)
       }
@@ -124,6 +132,9 @@ export function useUnifiedDragHandlers({
       }
       if (multiResizeStateRef.current) {
         setMultiResizeState(null)
+      }
+      if (hadMutation) {
+        commitHistory()
       }
       if (panStateRef.current) setPanState(null)
 
@@ -152,7 +163,7 @@ export function useUnifiedDragHandlers({
 
     window.addEventListener('pointerup', handleGlobalPointerUp, true)
     return () => window.removeEventListener('pointerup', handleGlobalPointerUp, true)
-  }, [setDragState, setMultiDragState, setResizeState, setMultiResizeState, setPanState, setBoxSelect, setMultiSelect, getNodesForType, getNodeSizeForType])
+  }, [setDragState, setMultiDragState, setResizeState, setMultiResizeState, setPanState, setBoxSelect, setMultiSelect, getNodesForType, getNodeSizeForType, commitHistory])
 
   // Handle pointer move - update positions during drag
   useEffect(() => {

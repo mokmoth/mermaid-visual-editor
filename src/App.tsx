@@ -25,6 +25,7 @@ import {
   saveDiagram,
   getCurrentDiagramId,
   setCurrentDiagramId,
+  listDiagrams,
   isAdmin,
   DiagramRecord,
   DiagramType,
@@ -39,7 +40,7 @@ import type { SequenceDiagramState } from './plugins/sequence/types'
 import { createInitialStateDiagramState } from './plugins/state/types'
 import { createInitialClassDiagramState } from './plugins/class/types'
 import { createInitialERDiagramState } from './plugins/er/types'
-import { createInitialSequenceDiagramState } from './plugins/sequence/types'
+import { createInitialSequenceDiagramState, getSequenceBounds } from './plugins/sequence/types'
 import { getStateNodeSize } from './plugins/state/StateNode'
 import { getClassSize } from './plugins/class/ClassNode'
 import { getEntitySize } from './plugins/er/EntityNode'
@@ -89,9 +90,10 @@ export default function App() {
   const isCurrentUserAdmin = currentUser ? isAdmin(currentUser) : false
 
   // Core state with undo/redo
-  const [graphState, setGraphState, undo, redo, canUndo, canRedo, replaceGraphState] = useUndoRedo(() => {
-    return initialState
-  })
+  const [
+    graphState, setGraphState, undoFlow, redoFlow, canUndoFlow, canRedoFlow,
+    replaceGraphState, beginGraph, commitGraph, resetGraph
+  ] = useUndoRedo<GraphState>(() => initialState)
   const { nodes, links, swimlanes } = graphState
 
   // UI state
@@ -111,11 +113,69 @@ export default function App() {
     return saved === 'true'
   })
 
-  // Plugin-specific states
-  const [stateState, setStateState] = useState<StateDiagramState>(createInitialStateDiagramState)
-  const [classState, setClassState] = useState<ClassDiagramState>(createInitialClassDiagramState)
-  const [erState, setERState] = useState<ERDiagramState>(createInitialERDiagramState)
-  const [sequenceState, setSequenceState] = useState<SequenceDiagramState>(createInitialSequenceDiagramState)
+  // Plugin-specific states (same undo stack shape as flowchart)
+  const [
+    stateState, setStateState, undoState, redoState, canUndoState, canRedoState,
+    replaceStateState, beginState, commitState, resetState
+  ] = useUndoRedo<StateDiagramState>(createInitialStateDiagramState)
+  const [
+    classState, setClassState, undoClass, redoClass, canUndoClass, canRedoClass,
+    replaceClassState, beginClass, commitClass, resetClass
+  ] = useUndoRedo<ClassDiagramState>(createInitialClassDiagramState)
+  const [
+    erState, setERState, undoER, redoER, canUndoER, canRedoER,
+    replaceERState, beginER, commitER, resetER
+  ] = useUndoRedo<ERDiagramState>(createInitialERDiagramState)
+  const [
+    sequenceState, setSequenceState, undoSeq, redoSeq, canUndoSeq, canRedoSeq,
+    , beginSeq, commitSeq, resetSeq
+  ] = useUndoRedo<SequenceDiagramState>(createInitialSequenceDiagramState)
+
+  const undo = useCallback(() => {
+    if (activeDiagramType === 'flowchart') undoFlow()
+    else if (activeDiagramType === 'state') undoState()
+    else if (activeDiagramType === 'class') undoClass()
+    else if (activeDiagramType === 'er') undoER()
+    else if (activeDiagramType === 'sequence') undoSeq()
+  }, [activeDiagramType, undoFlow, undoState, undoClass, undoER, undoSeq])
+
+  const redo = useCallback(() => {
+    if (activeDiagramType === 'flowchart') redoFlow()
+    else if (activeDiagramType === 'state') redoState()
+    else if (activeDiagramType === 'class') redoClass()
+    else if (activeDiagramType === 'er') redoER()
+    else if (activeDiagramType === 'sequence') redoSeq()
+  }, [activeDiagramType, redoFlow, redoState, redoClass, redoER, redoSeq])
+
+  const canUndo =
+    activeDiagramType === 'flowchart' ? canUndoFlow
+    : activeDiagramType === 'state' ? canUndoState
+    : activeDiagramType === 'class' ? canUndoClass
+    : activeDiagramType === 'er' ? canUndoER
+    : canUndoSeq
+
+  const canRedo =
+    activeDiagramType === 'flowchart' ? canRedoFlow
+    : activeDiagramType === 'state' ? canRedoState
+    : activeDiagramType === 'class' ? canRedoClass
+    : activeDiagramType === 'er' ? canRedoER
+    : canRedoSeq
+
+  const beginHistory = useCallback(() => {
+    if (activeDiagramType === 'flowchart') beginGraph()
+    else if (activeDiagramType === 'state') beginState()
+    else if (activeDiagramType === 'class') beginClass()
+    else if (activeDiagramType === 'er') beginER()
+    else if (activeDiagramType === 'sequence') beginSeq()
+  }, [activeDiagramType, beginGraph, beginState, beginClass, beginER, beginSeq])
+
+  const commitHistory = useCallback(() => {
+    if (activeDiagramType === 'flowchart') commitGraph()
+    else if (activeDiagramType === 'state') commitState()
+    else if (activeDiagramType === 'class') commitClass()
+    else if (activeDiagramType === 'er') commitER()
+    else if (activeDiagramType === 'sequence') commitSeq()
+  }, [activeDiagramType, commitGraph, commitState, commitClass, commitER, commitSeq])
 
   // Get active plugin
   const activePlugin = useMemo(() => pluginRegistry.get(activeDiagramType), [activeDiagramType])
@@ -200,15 +260,15 @@ export default function App() {
           setDirection(diagram.direction)
           
           if (diagram.type === 'flowchart') {
-            replaceGraphState(diagram.state || initialState)
+            resetGraph(diagram.state || initialState)
           } else if (diagram.type === 'state') {
-            setStateState(diagram.state || createInitialStateDiagramState())
+            resetState(diagram.state || createInitialStateDiagramState())
           } else if (diagram.type === 'class') {
-            setClassState(diagram.state || createInitialClassDiagramState())
+            resetClass(diagram.state || createInitialClassDiagramState())
           } else if (diagram.type === 'er') {
-            setERState(diagram.state || createInitialERDiagramState())
+            resetER(diagram.state || createInitialERDiagramState())
           } else if (diagram.type === 'sequence') {
-            setSequenceState(diagram.state || createInitialSequenceDiagramState())
+            resetSeq(diagram.state || createInitialSequenceDiagramState())
           }
         }, 0)
         return
@@ -227,29 +287,29 @@ export default function App() {
     setCurrentDiagramName(newDiagram.name)
     setCurrentDiagramId(newDiagram.id)
     if (plugin?.createInitialState) {
-      replaceGraphState(plugin.createInitialState() as GraphState)
+      resetGraph(plugin.createInitialState() as GraphState)
     }
-  }, [replaceGraphState])
+  }, [resetGraph, resetState, resetClass, resetER, resetSeq])
+
+  const saveCurrentDiagramRef = useRef<() => void>(() => {})
 
   // Handle user logout (switch user)
   const handleUserLogout = useCallback(() => {
-    // Save current diagram before logout
     if (currentDiagramId) {
-      saveCurrentDiagram()
+      saveCurrentDiagramRef.current()
     }
     clearCurrentUser()
     setCurrentUserState(null)
     setCurrentDiagramIdState(null)
     setCurrentDiagramName(null)
-    // Reset to initial state
-    replaceGraphState(initialState)
-    setStateState(createInitialStateDiagramState())
-    setClassState(createInitialClassDiagramState())
-    setERState(createInitialERDiagramState())
-    setSequenceState(createInitialSequenceDiagramState())
+    resetGraph(initialState)
+    resetState(createInitialStateDiagramState())
+    resetClass(createInitialClassDiagramState())
+    resetER(createInitialERDiagramState())
+    resetSeq(createInitialSequenceDiagramState())
     setActiveDiagramType('flowchart')
     setDirection('TD')
-  }, [currentDiagramId, replaceGraphState])
+  }, [currentDiagramId, resetGraph, resetState, resetClass, resetER, resetSeq])
 
   // Load a diagram from storage
   const loadDiagram = useCallback((diagram: DiagramRecord) => {
@@ -261,22 +321,22 @@ export default function App() {
     
     // Load state based on diagram type
     if (diagram.type === 'flowchart') {
-      replaceGraphState(diagram.state || initialState)
+      resetGraph(diagram.state || initialState)
     } else if (diagram.type === 'state') {
-      setStateState(diagram.state || createInitialStateDiagramState())
+      resetState(diagram.state || createInitialStateDiagramState())
     } else if (diagram.type === 'class') {
-      setClassState(diagram.state || createInitialClassDiagramState())
+      resetClass(diagram.state || createInitialClassDiagramState())
     } else if (diagram.type === 'er') {
-      setERState(diagram.state || createInitialERDiagramState())
+      resetER(diagram.state || createInitialERDiagramState())
     } else if (diagram.type === 'sequence') {
-      setSequenceState(diagram.state || createInitialSequenceDiagramState())
+      resetSeq(diagram.state || createInitialSequenceDiagramState())
     }
     
     // Reset view
     setEditorView({ x: 0, y: 0, scale: 1 })
     setSelection(null)
     setMultiSelect(new Set())
-  }, [replaceGraphState])
+  }, [resetGraph, resetState, resetClass, resetER, resetSeq])
 
   // Save current diagram to storage
   const saveCurrentDiagram = useCallback(() => {
@@ -301,6 +361,7 @@ export default function App() {
       state,
     })
   }, [currentDiagramId, currentUser, activeDiagramType, graphState, stateState, classState, erState, sequenceState, direction])
+  saveCurrentDiagramRef.current = saveCurrentDiagram
 
   // Auto-save with debounce
   const triggerAutoSave = useCallback(() => {
@@ -348,26 +409,41 @@ export default function App() {
 
   // Handle deleting a diagram
   const handleDeleteDiagram = useCallback((deletedId: string) => {
-    // If we deleted the current diagram, reset to initial state
-    if (deletedId === currentDiagramId) {
-      setCurrentDiagramIdState(null)
-      setCurrentDiagramName(null)
-      replaceGraphState(initialState)
-      setActiveDiagramType('flowchart')
+    if (deletedId !== currentDiagramId) return
+    const remaining = listDiagrams()
+    if (remaining.length > 0) {
+      loadDiagram(remaining[0])
+      return
     }
-  }, [currentDiagramId, replaceGraphState])
+    const plugin = pluginRegistry.get('flowchart')
+    const newDiagram = createDiagram(
+      '未命名图表',
+      'flowchart',
+      'TD',
+      plugin?.createInitialState() || initialState
+    )
+    loadDiagram(newDiagram)
+  }, [currentDiagramId, loadDiagram])
 
   // Load user's last diagram on mount (if user is logged in)
   useEffect(() => {
-    if (currentUser) {
-      const lastDiagramId = getCurrentDiagramId()
-      if (lastDiagramId) {
-        const diagram = getDiagram(lastDiagramId)
-        if (diagram) {
-          loadDiagram(diagram)
-        }
+    if (!currentUser) return
+    const lastDiagramId = getCurrentDiagramId()
+    if (lastDiagramId) {
+      const diagram = getDiagram(lastDiagramId)
+      if (diagram) {
+        loadDiagram(diagram)
+        return
       }
     }
+    const plugin = pluginRegistry.get('flowchart')
+    const newDiagram = createDiagram(
+      '未命名图表',
+      'flowchart',
+      'TD',
+      plugin?.createInitialState() || initialState
+    )
+    loadDiagram(newDiagram)
   }, []) // Only run on mount
 
   // Auto-save when state changes
@@ -461,13 +537,17 @@ export default function App() {
           const bounds = calculateItemsBounds(erState.entities, getEntitySize)
           const newView = calculateFitToView(bounds, rect.width, rect.height)
           setEditorView(newView)
+        } else if (activeDiagramType === 'sequence') {
+          const bounds = getSequenceBounds(sequenceState)
+          const newView = calculateFitToView(bounds, rect.width, rect.height)
+          setEditorView(newView)
         }
         setInitialFitDone(true)
       }
     }, 100)
 
     return () => clearTimeout(timer)
-  }, [initialFitDone, activeDiagramType, nodes, swimlanes, stateState.states, classState.classes, erState.entities])
+  }, [initialFitDone, activeDiagramType, nodes, swimlanes, stateState.states, classState.classes, erState.entities, sequenceState])
 
   // Reset fit done flag when diagram type changes
   useEffect(() => {
@@ -657,7 +737,77 @@ export default function App() {
     deleteSelection,
     multiSelect,
     drawingLink,
-    onDrawingLinkCancel: () => setDrawingLink(null)
+    onDrawingLinkCancel: () => setDrawingLink(null),
+    copySelection: () => {
+      if (!selection) return
+      if (activeDiagramType === 'flowchart') {
+        if (selection.type === 'node') {
+          const node = nodes.find(n => n.id === selection.id)
+          if (node) setClipboard({ type: 'node', data: { ...node } })
+        } else if (selection.type === 'link') {
+          const link = links.find(l => l.id === selection.id)
+          if (link) setClipboard({ type: 'link', data: { ...link } })
+        }
+        return
+      }
+      if (activeDiagramType === 'state' && selection.type === 'state') {
+        const item = stateState.states.find(s => s.id === selection.id)
+        if (item) setClipboard({ type: 'node', data: { ...item } as unknown as GraphNode })
+      } else if (activeDiagramType === 'class' && selection.type === 'class') {
+        const item = classState.classes.find(c => c.id === selection.id)
+        if (item) setClipboard({ type: 'node', data: { ...item } as unknown as GraphNode })
+      } else if (activeDiagramType === 'er' && selection.type === 'entity') {
+        const item = erState.entities.find(e => e.id === selection.id)
+        if (item) setClipboard({ type: 'node', data: { ...item } as unknown as GraphNode })
+      } else if (activeDiagramType === 'sequence' && selection.type === 'participant') {
+        const item = sequenceState.participants.find(p => p.id === selection.id)
+        if (item) setClipboard({ type: 'node', data: { ...item } as unknown as GraphNode })
+      }
+    },
+    pasteClipboard: () => {
+      if (!clipboard || clipboard.type !== 'node') return
+      const id = `${activeDiagramType}_${Date.now()}`
+      if (activeDiagramType === 'flowchart') {
+        const nodeData = clipboard.data as GraphNode
+        const newNode: GraphNode = { ...nodeData, id, x: nodeData.x + 50, y: nodeData.y + 50 }
+        setNodes([...nodes, newNode])
+        setSelection({ type: 'node', id })
+      } else if (activeDiagramType === 'state') {
+        const item = clipboard.data as unknown as StateNode
+        setStateState(prev => ({ ...prev, states: [...prev.states, { ...item, id, x: item.x + 50, y: item.y + 50 }] }))
+        setSelection({ type: 'state', id })
+      } else if (activeDiagramType === 'class') {
+        const item = clipboard.data as unknown as ClassNode
+        setClassState(prev => ({ ...prev, classes: [...prev.classes, { ...item, id, x: item.x + 50, y: item.y + 50 }] }))
+        setSelection({ type: 'class', id })
+      } else if (activeDiagramType === 'er') {
+        const item = clipboard.data as unknown as Entity
+        setERState(prev => ({ ...prev, entities: [...prev.entities, { ...item, id, x: item.x + 50, y: item.y + 50 }] }))
+        setSelection({ type: 'entity', id })
+      } else if (activeDiagramType === 'sequence') {
+        const item = clipboard.data as unknown as { name: string; type: 'participant' | 'actor' }
+        const maxOrder = Math.max(...sequenceState.participants.map(p => p.order), -1)
+        setSequenceState(prev => ({
+          ...prev,
+          participants: [...prev.participants, { id, name: `${item.name} copy`, type: item.type, order: maxOrder + 1 }]
+        }))
+        setSelection({ type: 'participant', id })
+      }
+    },
+    selectAll: () => {
+      if (activeDiagramType === 'flowchart') {
+        setMultiSelect(new Set(nodes.map(n => n.id)))
+      } else if (activeDiagramType === 'state') {
+        setMultiSelect(new Set(stateState.states.map(s => s.id)))
+      } else if (activeDiagramType === 'class') {
+        setMultiSelect(new Set(classState.classes.map(c => c.id)))
+      } else if (activeDiagramType === 'er') {
+        setMultiSelect(new Set(erState.entities.map(e => e.id)))
+      } else if (activeDiagramType === 'sequence') {
+        setMultiSelect(new Set(sequenceState.participants.map(p => p.id)))
+      }
+      setSelection(null)
+    }
   })
 
   // Use flowchart drag handlers only when flowchart is active
@@ -678,6 +828,7 @@ export default function App() {
     graphState,
     setGraphState,
     replaceGraphState,
+    commitGraphHistory: commitGraph,
     editorView,
     setEditorView,
     setPreviewView,
@@ -705,16 +856,16 @@ export default function App() {
   const updateNodesForType = useCallback((type: string, updatedNodes: Array<{ id: string; x: number; y: number; [key: string]: any }>) => {
     switch (type) {
       case 'state':
-        setStateState(prev => ({ ...prev, states: updatedNodes as StateNode[] }))
+        replaceStateState(prev => ({ ...prev, states: updatedNodes as StateNode[] }))
         break
       case 'class':
-        setClassState(prev => ({ ...prev, classes: updatedNodes as ClassNode[] }))
+        replaceClassState(prev => ({ ...prev, classes: updatedNodes as ClassNode[] }))
         break
       case 'er':
-        setERState(prev => ({ ...prev, entities: updatedNodes as Entity[] }))
+        replaceERState(prev => ({ ...prev, entities: updatedNodes as Entity[] }))
         break
     }
-  }, [])
+  }, [replaceStateState, replaceClassState, replaceERState])
 
   const getNodeSizeForType = useCallback((type: string, node: any): { width: number; height: number } => {
     switch (type) {
@@ -753,7 +904,8 @@ export default function App() {
     setMultiSelect,
     getNodesForType,
     updateNodesForType,
-    getNodeSizeForType
+    getNodeSizeForType,
+    commitHistory
   })
 
   const finishEditing = useCallback(() => {
@@ -1184,8 +1336,8 @@ export default function App() {
     setNodes(newNodes)
   }, [multiSelect, nodes, setNodes])
 
-  // Canvas handlers - work with all diagram types
   const handleDragStart = useCallback((nodeId: string, e: React.PointerEvent) => {
+    beginHistory()
     let node: { id: string; x: number; y: number } | undefined
 
     if (activeDiagramType === 'flowchart') {
@@ -1206,9 +1358,10 @@ export default function App() {
       initialNodeX: node.x,
       initialNodeY: node.y
     })
-  }, [nodes, activeDiagramType, stateState, classState, erState])
+  }, [nodes, activeDiagramType, stateState, classState, erState, beginHistory])
 
   const handleMultiDragStart = useCallback((nodeIds: Set<string>, e: React.PointerEvent) => {
+    beginHistory()
     const initialPositions = new Map<string, { x: number; y: number }>()
 
     if (activeDiagramType === 'flowchart') {
@@ -1248,9 +1401,10 @@ export default function App() {
       startX: e.clientX,
       startY: e.clientY
     })
-  }, [nodes, graphState.swimlanes, activeDiagramType, stateState, classState, erState])
+  }, [nodes, graphState.swimlanes, activeDiagramType, stateState, classState, erState, beginHistory])
 
   const handleResizeStart = useCallback((e: React.PointerEvent, node: any, handle: ResizeHandle) => {
+    beginHistory()
     e.stopPropagation()
     e.preventDefault()
 
@@ -1272,9 +1426,10 @@ export default function App() {
       startNodeY: node.y,
       handle
     })
-  }, [activeDiagramType, getNodeSizeForType])
+  }, [activeDiagramType, getNodeSizeForType, beginHistory])
 
   const handleMultiResizeStart = useCallback((nodeIds: Set<string>, e: React.PointerEvent, handle: ResizeHandle) => {
+    beginHistory()
     e.stopPropagation()
     e.preventDefault()
 
@@ -1333,7 +1488,7 @@ export default function App() {
       startY: e.clientY,
       handle
     })
-  }, [nodes, graphState.swimlanes, activeDiagramType, stateState, classState, erState, getNodeSizeForType])
+  }, [nodes, graphState.swimlanes, activeDiagramType, stateState, classState, erState, getNodeSizeForType, beginHistory])
 
   const handleDrawingLinkStart = useCallback((sourceId: string) => {
     let center: { x: number; y: number } | null = null
@@ -1416,6 +1571,7 @@ export default function App() {
   const handleSwimlaneDragStart = useCallback((swimlaneId: string, e: React.PointerEvent) => {
     const swimlane = swimlanes.find(s => s.id === swimlaneId)
     if (!swimlane) return
+    beginGraph()
     setSwimlaneDragState({
       swimlaneId,
       startX: e.clientX,
@@ -1423,10 +1579,11 @@ export default function App() {
       initialX: swimlane.x,
       initialY: swimlane.y
     })
-  }, [swimlanes])
+  }, [swimlanes, beginGraph])
 
   const handleSwimlaneResizeStart = useCallback((e: React.PointerEvent, swimlane: Swimlane, handle: ResizeHandle) => {
     e.stopPropagation()
+    beginGraph()
     setSwimlaneResizeState({
       swimlaneId: swimlane.id,
       startX: e.clientX,
@@ -1437,7 +1594,7 @@ export default function App() {
       startSwimlaneY: swimlane.y,
       handle
     })
-  }, [])
+  }, [beginGraph])
 
   const handleSwimlaneChange = useCallback((id: string, updates: Partial<Swimlane>) => {
     setSwimlanes(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s))
@@ -1451,18 +1608,23 @@ export default function App() {
       if (swimlaneDragState) {
         const dx = (e.clientX - swimlaneDragState.startX) / editorView.scale
         const dy = (e.clientY - swimlaneDragState.startY) / editorView.scale
-        setSwimlanes(prev => prev.map(s =>
-          s.id === swimlaneDragState.swimlaneId
-            ? { ...s, x: swimlaneDragState.initialX + dx, y: swimlaneDragState.initialY + dy }
-            : s
-        ))
+        replaceGraphState(prev => ({
+          ...prev,
+          swimlanes: prev.swimlanes.map(s =>
+            s.id === swimlaneDragState.swimlaneId
+              ? { ...s, x: swimlaneDragState.initialX + dx, y: swimlaneDragState.initialY + dy }
+              : s
+          )
+        }))
       }
       if (swimlaneResizeState) {
         const dx = (e.clientX - swimlaneResizeState.startX) / editorView.scale
         const dy = (e.clientY - swimlaneResizeState.startY) / editorView.scale
         const handle = swimlaneResizeState.handle
 
-        setSwimlanes(prev => prev.map(s => {
+        replaceGraphState(prev => ({
+          ...prev,
+          swimlanes: prev.swimlanes.map(s => {
           if (s.id !== swimlaneResizeState.swimlaneId) return s
 
           let newX = swimlaneResizeState.startSwimlaneX
@@ -1482,11 +1644,15 @@ export default function App() {
           }
 
           return { ...s, x: newX, y: newY, width: newW, height: newH }
+        })
         }))
       }
     }
 
     const handlePointerUp = () => {
+      if (swimlaneDragState || swimlaneResizeState) {
+        commitGraph()
+      }
       setSwimlaneDragState(null)
       setSwimlaneResizeState(null)
     }
@@ -1498,7 +1664,7 @@ export default function App() {
       window.removeEventListener('pointermove', handlePointerMove)
       window.removeEventListener('pointerup', handlePointerUp)
     }
-  }, [swimlaneDragState, swimlaneResizeState, editorView.scale, setSwimlanes])
+  }, [swimlaneDragState, swimlaneResizeState, editorView.scale, replaceGraphState, commitGraph])
 
   // Render Canvas based on diagram type
   const renderCanvas = () => {

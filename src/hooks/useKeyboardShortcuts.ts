@@ -25,6 +25,9 @@ interface KeyboardShortcutsProps {
   multiSelect: Set<string>
   drawingLink?: DrawingLink | null
   onDrawingLinkCancel?: () => void
+  copySelection?: () => void
+  pasteClipboard?: () => void
+  selectAll?: () => void
 }
 
 export function useKeyboardShortcuts({
@@ -44,11 +47,16 @@ export function useKeyboardShortcuts({
   deleteSelection,
   multiSelect,
   drawingLink,
-  onDrawingLinkCancel
+  onDrawingLinkCancel,
+  copySelection,
+  pasteClipboard,
+  selectAll
 }: KeyboardShortcutsProps) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (editingNodeId || editingLinkId) return
+      const target = e.target as HTMLElement | null
+      if (target?.closest('textarea, input, select, [contenteditable="true"]')) return
 
       if ((e.metaKey || e.ctrlKey) && e.key === 'z') {
         e.preventDefault()
@@ -56,7 +64,9 @@ export function useKeyboardShortcuts({
         else undo()
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'c' && selection) {
         e.preventDefault()
-        if (selection.type === 'node') {
+        if (copySelection) {
+          copySelection()
+        } else if (selection.type === 'node') {
           const node = nodes.find(n => n.id === selection.id)
           if (node) setClipboard({ type: 'node', data: { ...node } })
         } else if (selection.type === 'link') {
@@ -65,7 +75,9 @@ export function useKeyboardShortcuts({
         }
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'v' && clipboard) {
         e.preventDefault()
-        if (clipboard.type === 'node') {
+        if (pasteClipboard) {
+          pasteClipboard()
+        } else if (clipboard.type === 'node') {
           const nodeData = clipboard.data as GraphNode
           const newNode: GraphNode = {
             ...nodeData,
@@ -81,8 +93,12 @@ export function useKeyboardShortcuts({
         deleteSelection()
       } else if ((e.metaKey || e.ctrlKey) && e.key === 'a') {
         e.preventDefault()
-        setMultiSelect(new Set(nodes.map(n => n.id)))
-        setSelection(null)
+        if (selectAll) {
+          selectAll()
+        } else {
+          setMultiSelect(new Set(nodes.map(n => n.id)))
+          setSelection(null)
+        }
       } else if (e.key === 'Escape') {
         // Cancel drawing link first if active
         if (drawingLink && onDrawingLinkCancel) {
@@ -96,5 +112,5 @@ export function useKeyboardShortcuts({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [undo, redo, selection, clipboard, nodes, links, editingNodeId, editingLinkId, multiSelect, drawingLink, setClipboard, setNodes, setSelection, setMultiSelect, setBoxSelect, deleteSelection, onDrawingLinkCancel])
+  }, [undo, redo, selection, clipboard, nodes, links, editingNodeId, editingLinkId, multiSelect, drawingLink, setClipboard, setNodes, setSelection, setMultiSelect, setBoxSelect, deleteSelection, onDrawingLinkCancel, copySelection, pasteClipboard, selectAll])
 }

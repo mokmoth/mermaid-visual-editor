@@ -1,56 +1,87 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 /**
- * Custom hook for undo/redo functionality
- * @param initialState - The initial state value
- * @returns Tuple of [present, set, undo, redo, canUndo, canRedo, replace]
+ * Undo/redo with a live-replace path for dragging.
+ * Discrete edits go through `set` (one history entry).
+ * Drag/resize: `begin()` at pointer down, `replace()` while moving, `commit()` on pointer up.
  */
 export function useUndoRedo<T>(initialValue: T | (() => T)) {
   const [past, setPast] = useState<T[]>([])
   const [present, setPresent] = useState<T>(initialValue)
   const [future, setFuture] = useState<T[]>([])
+  const checkpointRef = useRef<T | null>(null)
 
   const canUndo = past.length > 0
   const canRedo = future.length > 0
 
   const undo = useCallback(() => {
-    if (past.length === 0) return
-    
-    const previous = past[past.length - 1]
-    const newPast = past.slice(0, past.length - 1)
-    
-    setPast(newPast)
-    setFuture([present, ...future])
-    setPresent(previous)
-  }, [past, present, future])
+    setPast(prevPast => {
+      if (prevPast.length === 0) return prevPast
+      const previous = prevPast[prevPast.length - 1]
+      setPresent(curr => {
+        setFuture(prevFuture => [curr, ...prevFuture])
+        return previous
+      })
+      return prevPast.slice(0, prevPast.length - 1)
+    })
+  }, [])
 
   const redo = useCallback(() => {
-    if (future.length === 0) return
-    
-    const next = future[0]
-    const newFuture = future.slice(1)
-    
-    setFuture(newFuture)
-    setPast([...past, present])
-    setPresent(next)
-  }, [past, present, future])
+    setFuture(prevFuture => {
+      if (prevFuture.length === 0) return prevFuture
+      const next = prevFuture[0]
+      setPresent(curr => {
+        setPast(prevPast => [...prevPast, curr])
+        return next
+      })
+      return prevFuture.slice(1)
+    })
+  }, [])
 
   const set = useCallback((newPresent: T | ((prev: T) => T), clearFuture = true) => {
-    const resolvedPresent = typeof newPresent === 'function' 
-      ? (newPresent as (prev: T) => T)(present) 
-      : newPresent
+    setPresent(curr => {
+      const resolvedPresent = typeof newPresent === 'function'
+        ? (newPresent as (prev: T) => T)(curr)
+        : newPresent
+      if (Object.is(resolvedPresent, curr)) return curr
+      checkpointRef.current = null
+      setPast(prevPast => [...prevPast, curr])
+      if (clearFuture) setFuture([])
+      return resolvedPresent
+    })
+  }, [])
 
-    if (resolvedPresent === present) return
-    
-    setPast(prevPast => [...prevPast, present])
-    if (clearFuture) setFuture([])
-    setPresent(resolvedPresent)
+  const replace = useCallback((newPresent: T | ((prev: T) => T)) => {
+    setPresent(curr =>
+      typeof newPresent === 'function'
+        ? (newPresent as (prev: T) => T)(curr)
+        : newPresent
+    )
+  }, [])
+
+  const begin = useCallback(() => {
+    checkpointRef.current = present
   }, [present])
 
-  // Update current state without recording history (for continuous operations like dragging)
-  const replace = useCallback((newPresent: T) => {
+  const commit = useCallback(() => {
+    const before = checkpointRef.current
+    checkpointRef.current = null
+    if (before == null) return
+    setPresent(curr => {
+      if (!Object.is(curr, before)) {
+        setPast(prevPast => [...prevPast, before])
+        setFuture([])
+      }
+      return curr
+    })
+  }, [])
+
+  const reset = useCallback((newPresent: T) => {
+    checkpointRef.current = null
+    setPast([])
+    setFuture([])
     setPresent(newPresent)
   }, [])
 
-  return [present, set, undo, redo, canUndo, canRedo, replace] as const
+  return [present, set, undo, redo, canUndo, canRedo, replace, begin, commit, reset] as const
 }

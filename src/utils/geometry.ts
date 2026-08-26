@@ -271,8 +271,8 @@ export function calculateFitToView(
   const scaleX = availableWidth / contentWidth
   const scaleY = availableHeight / contentHeight
 
-  // Use the smaller scale to ensure everything fits, clamp between 0.1 and 2
-  const scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.1), 2)
+  // Shrink to fit; never zoom in past 100% on auto-fit (user can still pinch-zoom)
+  const scale = Math.min(Math.max(Math.min(scaleX, scaleY), 0.1), 1)
 
   // Calculate center of content
   const contentCenterX = bounds.minX + contentWidth / 2

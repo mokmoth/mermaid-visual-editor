@@ -46,6 +46,36 @@ export interface SequenceDiagramState {
 }
 
 // Initial state factory - minimal example
+export function getSequenceBounds(state: SequenceDiagramState): {
+  minX: number
+  minY: number
+  maxX: number
+  maxY: number
+} {
+  const PARTICIPANT_SPACING = 150
+  const PARTICIPANT_WIDTH = 100
+  const PARTICIPANT_HEIGHT = 40
+  const BASE_Y = 80
+  const MESSAGE_SPACING = 50
+  if (state.participants.length === 0) {
+    return { minX: 0, minY: 0, maxX: 200, maxY: 200 }
+  }
+  let minX = Infinity
+  let maxX = -Infinity
+  for (const participant of state.participants) {
+    const x = 50 + participant.order * PARTICIPANT_SPACING
+    minX = Math.min(minX, x)
+    maxX = Math.max(maxX, x + PARTICIPANT_WIDTH)
+  }
+  const timelineHeight = state.messages.length * MESSAGE_SPACING + 100
+  return {
+    minX,
+    minY: BASE_Y,
+    maxX,
+    maxY: BASE_Y + PARTICIPANT_HEIGHT + timelineHeight,
+  }
+}
+
 export function createInitialSequenceDiagramState(): SequenceDiagramState {
   return {
     participants: [
