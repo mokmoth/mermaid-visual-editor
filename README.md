@@ -32,13 +32,10 @@ React 18 · TypeScript · Vite 5 · Tailwind · Mermaid 11 · dagre / 自研 Sug
 
 ## Git 状态（2026-08-26）
 
-远端 `origin/main` 停在 2026-01-22 的 v1 流程图版（`ddadafd`）。  
-本地 `main` 在其上多了两笔未推送提交：v2 插件化多图类型，以及本次预览/类型切换修复。  
-**未 push**，推远端需 Rice 拍板。
+`origin/main` 当前在 `f4d39a2`（v2 多图类型 + 预览/撤销/非法代码护栏）。
 
 ## 已知缺口（捡起来时优先看）
 
 - `src/App.tsx` 仍是约 1800 行总控，插件接口没有真正吃掉 flowchart
-- 撤销/重做只覆盖流程图
 - 密码是本地弱哈希，只适合单机自用
-- 没有 ESLint 配置、没有测试
+- 没有自动测试；Mermaid 报错 SVG 有时会漏到页面上
