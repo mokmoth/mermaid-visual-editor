@@ -1,4 +1,32 @@
+import mermaid from 'mermaid'
 import type { GraphNode, GraphLink, FlowDirection, Swimlane } from '@/types'
+
+let mermaidRenderSeq = 0
+
+/**
+ * Render Mermaid source to an SVG string.
+ * Uses mermaidAPI.render to bypass the public render() serial queue, which
+ * can deadlock with mermaid.run() when startOnLoad is true.
+ */
+export async function renderMermaidSvg(code: string): Promise<string> {
+  const sanitized = sanitizeMermaidCode(code)
+  const id = `mmd-svg-${++mermaidRenderSeq}-${Math.random().toString(36).slice(2, 8)}`
+  const api = mermaid.mermaidAPI ?? mermaid
+  const result = await api.render(id, sanitized)
+  return result.svg
+}
+
+export function applySvgToPreview(container: HTMLElement, svg: string): void {
+  container.innerHTML = svg
+  const svgEl = container.querySelector('svg')
+  if (!svgEl) return
+  svgEl.removeAttribute('width')
+  svgEl.removeAttribute('height')
+  svgEl.style.width = 'auto'
+  svgEl.style.height = 'auto'
+  svgEl.style.maxWidth = '100%'
+  svgEl.style.maxHeight = '100%'
+}
 
 /**
  * Sanitize Mermaid code to fix common syntax issues before rendering

@@ -18,18 +18,16 @@ export function generateClassMermaidCode(
 
   // Generate class definitions
   classes.forEach(cls => {
-    // Stereotype annotation
+    const safeName = (cls.name || cls.id).replace(/"/g, "'")
+    const display = cls.name && cls.name !== cls.id ? `["${safeName}"]` : ''
+    lines.push(`    class ${cls.id}${display} {`)
+
     if (cls.stereotype === 'interface') {
-      lines.push(`    class ${cls.id} {`)
       lines.push(`        <<interface>>`)
     } else if (cls.stereotype === 'abstract') {
-      lines.push(`    class ${cls.id} {`)
       lines.push(`        <<abstract>>`)
     } else if (cls.stereotype === 'enum') {
-      lines.push(`    class ${cls.id} {`)
       lines.push(`        <<enumeration>>`)
-    } else {
-      lines.push(`    class ${cls.id} {`)
     }
 
     // Attributes
@@ -48,11 +46,6 @@ export function generateClassMermaidCode(
     })
 
     lines.push('    }')
-
-    // Class name if different from ID
-    if (cls.name !== cls.id) {
-      lines.push(`    ${cls.id} : ${cls.name}`)
-    }
   })
 
   // Generate relationships
@@ -125,13 +118,13 @@ export function parseClassMermaidCode(
         continue
       }
 
-      // Parse class start
-      const classStartMatch = line.match(/^class\s+(\w+)\s*\{?/)
+      // Parse class start, including class Foo["Display Name"] {
+      const classStartMatch = line.match(/^class\s+(\w+)(?:\s*\["([^"]*)"\])?\s*\{?/)
       if (classStartMatch) {
-        const [, id] = classStartMatch
+        const [, id, displayName] = classStartMatch
         currentClass = {
           id,
-          name: id,
+          name: displayName || id,
           x: 100 + classes.length * 200,
           y: 100,
           stereotype: 'none',

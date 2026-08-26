@@ -9,7 +9,7 @@ import { UserNameDialog } from './components/UserNameDialog'
 import { DiagramList } from './components/DiagramList'
 import { AdminPanel } from './components/AdminPanel'
 import { useUndoRedo } from './hooks/useUndoRedo'
-import { generateMermaidCode, parseMermaidCode, sanitizeMermaidCode } from './utils/mermaid'
+import { generateMermaidCode, parseMermaidCode, renderMermaidSvg, applySvgToPreview } from './utils/mermaid'
 import { applyAutoLayout } from './utils/layout'
 import { getNodeSize } from './utils/nodeSize'
 import { getNodeCenter, calculateFitToView, calculateFlowchartBounds, calculateItemsBounds } from './utils/geometry'
@@ -216,9 +216,19 @@ export default function App() {
     }
     
     // No last diagram, create a new one
-    const newDiagram = createDiagram('未命名图表', 'flowchart', 'TD', initialState)
+    const plugin = pluginRegistry.get('flowchart')
+    const newDiagram = createDiagram(
+      '未命名图表',
+      'flowchart',
+      'TD',
+      plugin?.createInitialState() || initialState
+    )
     setCurrentDiagramIdState(newDiagram.id)
     setCurrentDiagramName(newDiagram.name)
+    setCurrentDiagramId(newDiagram.id)
+    if (plugin?.createInitialState) {
+      replaceGraphState(plugin.createInitialState() as GraphState)
+    }
   }, [replaceGraphState])
 
   // Handle user logout (switch user)
@@ -309,7 +319,20 @@ export default function App() {
       saveCurrentDiagram()
     }
 
-    const newDiagram = createDiagram(`新建${type === 'flowchart' ? '流程图' : type === 'state' ? '状态图' : type === 'class' ? '类图' : type === 'er' ? 'ER图' : '时序图'}`, type, 'TD')
+    const plugin = pluginRegistry.get(type)
+    const typeNames: Record<DiagramType, string> = {
+      flowchart: '流程图',
+      state: '状态图',
+      class: '类图',
+      er: 'ER图',
+      sequence: '时序图',
+    }
+    const newDiagram = createDiagram(
+      `新建${typeNames[type]}`,
+      type,
+      plugin?.getDefaultDirection?.() || 'TD',
+      plugin?.createInitialState()
+    )
     loadDiagram(newDiagram)
     setShowDiagramList(false)
   }, [currentDiagramId, saveCurrentDiagram, loadDiagram])
@@ -365,18 +388,17 @@ export default function App() {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload)
   }, [currentDiagramId, saveCurrentDiagram])
 
-  // Initialize mermaid - match editor canvas style
+  // Theme mermaid to match the editor canvas. startOnLoad stays false (see main.tsx).
   useEffect(() => {
-    console.log('Mermaid object keys:', Object.keys(mermaid))
-    console.log('Mermaid:', mermaid)
+    mermaid.startOnLoad = false
     mermaid.initialize({
-      startOnLoad: true,
+      startOnLoad: false,
       theme: 'base',
       securityLevel: 'loose',
       fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       flowchart: {
         htmlLabels: true,
-        useMaxWidth: false,
+        useMaxWidth: true,
         wrappingWidth: 120,
         nodeSpacing: 50,
         rankSpacing: 60,
@@ -385,8 +407,6 @@ export default function App() {
         diagramPadding: 20
       },
       themeVariables: {
-        // Match editor canvas style
-        // Nodes: white background with slate border
         primaryColor: '#ffffff',
         primaryTextColor: '#1e293b',
         primaryBorderColor: '#475569',
@@ -396,20 +416,14 @@ export default function App() {
         tertiaryColor: '#ffffff',
         tertiaryTextColor: '#1e293b',
         tertiaryBorderColor: '#475569',
-        // Lines - slate color
         lineColor: '#475569',
-        // Text
         fontSize: '14px',
-        // Background
         background: '#ffffff',
         mainBkg: '#ffffff',
         nodeBorder: '#475569',
-        // Subgraph (swimlanes) - light blue like editor
         clusterBkg: '#f0f9ff',
         clusterBorder: '#94a3b8',
-        // Edge labels
         edgeLabelBackground: '#ffffff',
-        // Notes
         noteBkgColor: '#fef9c3',
         noteTextColor: '#713f12',
         noteBorderColor: '#facc15'
@@ -490,23 +504,33 @@ export default function App() {
     }))
   }, [setGraphState])
 
-  // Generate and render mermaid code
+  const renderGeneration = useRef(0)
+
   const renderDiagram = useCallback(async (code: string) => {
-    if (!mermaidRef.current) {
-      return
+    const gen = ++renderGeneration.current
+    if (!code.trim()) return
+
+    for (let attempt = 0; attempt < 20; attempt++) {
+      if (gen !== renderGeneration.current) return
+      if (mermaidRef.current) break
+      await new Promise(resolve => setTimeout(resolve, 50))
     }
+    if (gen !== renderGeneration.current) return
+    if (!mermaidRef.current) return
+
     try {
       mermaidRef.current.removeAttribute('data-processed')
-      // Sanitize code to fix common syntax issues (e.g., quotes inside labels with <br/>)
-      const sanitizedCode = sanitizeMermaidCode(code)
-      const result = await mermaid.render(`mermaid-svg-${Date.now()}`, sanitizedCode)
-      const { svg } = result
-      // Check ref again after async operation (component might have unmounted)
-      if (mermaidRef.current) {
-        mermaidRef.current.innerHTML = svg
-      }
+      const svg = await Promise.race([
+        renderMermaidSvg(code),
+        new Promise<string>((_, reject) =>
+          setTimeout(() => reject(new Error('Mermaid render timeout')), 8000)
+        )
+      ])
+      if (gen !== renderGeneration.current || !mermaidRef.current) return
+      applySvgToPreview(mermaidRef.current, svg)
       setMermaidError(null)
     } catch (e) {
+      if (gen !== renderGeneration.current) return
       console.error('Mermaid render error:', e)
       setMermaidError(t('errors.parseError') + ': ' + (e as Error).message)
     }
@@ -536,13 +560,11 @@ export default function App() {
       }
 
       setGeneratedCode(code)
-      console.log('Generated Mermaid code:', code)
 
       if (renderTimeoutRef.current) {
         window.clearTimeout(renderTimeoutRef.current)
       }
       renderTimeoutRef.current = window.setTimeout(() => {
-        console.log('About to call renderDiagram')
         renderDiagram(code)
       }, 300)
     }
@@ -814,7 +836,7 @@ export default function App() {
           ],
           color: '#f0f9ff' // Light blue
         }
-        setSwimlanes([...swimlanes, newSwimlane])
+        setSwimlanes(prev => [...prev, newSwimlane])
         setSelection({ type: 'swimlane', id })
         return
       }
@@ -837,7 +859,7 @@ export default function App() {
         double_circle: t('flowchart.labels.doubleCircle'),
         parallelogram_alt: t('flowchart.labels.parallelogramAlt')
       }
-      setNodes([...nodes, { id, type: type as GraphNode['type'], x, y, label: labels[type] || t('flowchart.labels.rect') }])
+      setNodes(prev => [...prev, { id, type: type as GraphNode['type'], x, y, label: labels[type] || t('flowchart.labels.rect') }])
       return
     }
 
@@ -932,7 +954,7 @@ export default function App() {
         }))
       }
     }
-  }, [nodes, editorView, setNodes, t, activeDiagramType, sequenceState])
+  }, [nodes, swimlanes, editorView, setNodes, setSwimlanes, t, activeDiagramType, sequenceState])
 
   // Auto layout
   const handleAutoLayout = useCallback(() => {
@@ -1048,33 +1070,31 @@ export default function App() {
     }
   }, [nodes, links, direction, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
 
-  // Handle diagram type change
+  // Handle diagram type change: persist the current document first, then
+  // open a new document of the target type so autosave cannot overwrite
+  // the previous diagram's graph with a different type's state.
   const handleDiagramTypeChange = useCallback((newType: string) => {
-    setActiveDiagramType(newType)
-    setSelection(null)
-    setMultiSelect(new Set())
-    setEditingNodeId(null)
-    setEditingLinkId(null)
-
-    // Generate code for the new diagram type
-    const plugin = pluginRegistry.get(newType)
-    if (newType === 'flowchart') {
-      const code = generateMermaidCode(nodes, links, direction, swimlanes)
-      setGeneratedCode(code)
-      renderDiagram(code)
-    } else if (plugin) {
-      const currentState = newType === 'state' ? stateState
-        : newType === 'class' ? classState
-        : newType === 'er' ? erState
-        : newType === 'sequence' ? sequenceState
-        : null
-      if (currentState) {
-        const code = plugin.toMermaid(currentState, direction)
-        setGeneratedCode(code)
-        renderDiagram(code)
-      }
+    if (newType === activeDiagramType) return
+    if (currentDiagramId) {
+      saveCurrentDiagram()
     }
-  }, [nodes, links, direction, stateState, classState, erState, sequenceState, renderDiagram])
+
+    const plugin = pluginRegistry.get(newType)
+    const typeNames: Record<string, string> = {
+      flowchart: '流程图',
+      state: '状态图',
+      class: '类图',
+      er: 'ER图',
+      sequence: '时序图',
+    }
+    const newDiagram = createDiagram(
+      `新建${typeNames[newType] || newType}`,
+      newType as DiagramType,
+      plugin?.getDefaultDirection?.() || 'TD',
+      plugin?.createInitialState()
+    )
+    loadDiagram(newDiagram)
+  }, [activeDiagramType, currentDiagramId, saveCurrentDiagram, loadDiagram])
 
   // Sidebar resize handler
   const handleSidebarResize = useCallback((delta: number) => {

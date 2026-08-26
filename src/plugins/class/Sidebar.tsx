@@ -712,7 +712,7 @@ export const ClassSidebar = memo(({
         >
           <div
             ref={mermaidRef}
-            className="mermaid p-4"
+            className="mermaid-preview p-4"
             style={{
               transform: previewView ? `translate(${previewView.x}px, ${previewView.y}px) scale(${previewView.scale})` : undefined,
               transformOrigin: '0 0'
