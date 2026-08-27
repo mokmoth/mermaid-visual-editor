@@ -5,7 +5,9 @@ import type { Selection, GraphNode, GraphLink, Swimlane, ArrowType, LinkType } f
 import { exportDiagram, ExportFormat } from '@/utils/export'
 import { SwimlanePreview } from './SwimlanePreview'
 import { ResizableDivider } from './ResizableDivider'
+import { FullscreenPortal } from './FullscreenPortal'
 import { calculateFitToView, calculateFlowchartBounds } from '@/utils/geometry'
+import { usePanelHeights } from '@/hooks/usePanelHeights'
 
 interface SidebarProps {
   selection: Selection | null
@@ -29,6 +31,7 @@ interface SidebarProps {
   onAlignNodes: (direction: string) => void
   onSnapToGridChange: (value: boolean) => void
   mermaidRef: React.RefObject<HTMLDivElement>
+  compact?: boolean
 }
 
 export const Sidebar = memo(({
@@ -52,40 +55,29 @@ export const Sidebar = memo(({
   onPreviewViewChange,
   onAlignNodes,
   onSnapToGridChange,
-  mermaidRef
+  mermaidRef,
+  compact = false
 }: SidebarProps) => {
   const [copied, setCopied] = useState(false)
   const [showExportMenu, setShowExportMenu] = useState(false)
   const [isSpacePressed, setIsSpacePressed] = useState(false)
-  const [propertiesHeight, setPropertiesHeight] = useState<number>(() => {
-    const saved = window.localStorage.getItem('mermaid-editor-properties-height')
-    return saved ? parseInt(saved, 10) : 280 // Default 280px
-  })
-  const [codeHeight, setCodeHeight] = useState<number>(() => {
-    const saved = window.localStorage.getItem('mermaid-editor-code-height')
-    return saved ? parseInt(saved, 10) : 200 // Default 200px
+  const {
+    rootRef,
+    propertiesHeight,
+    codeHeight,
+    handlePropertiesResize,
+    handleCodeResize
+  } = usePanelHeights({
+    propsKey: 'mermaid-editor-properties-height',
+    codeKey: 'mermaid-editor-code-height',
+    defaultProps: 280,
+    defaultCode: 200,
+    compact,
+    hasSelection: !!selection || multiSelectCount > 0
   })
   const previewContainerRef = useRef<HTMLDivElement>(null)
   const swimlanePreviewRef = useRef<HTMLDivElement>(null)
   const panState = useRef<{ startX: number; startY: number; viewStartX: number; viewStartY: number } | null>(null)
-
-  // Properties section resize handler
-  const handlePropertiesResize = useCallback((delta: number) => {
-    setPropertiesHeight(prev => {
-      const newHeight = Math.max(150, Math.min(500, prev + delta))
-      window.localStorage.setItem('mermaid-editor-properties-height', String(newHeight))
-      return newHeight
-    })
-  }, [])
-
-  // Code section resize handler
-  const handleCodeResize = useCallback((delta: number) => {
-    setCodeHeight(prev => {
-      const newHeight = Math.max(100, Math.min(400, prev + delta))
-      window.localStorage.setItem('mermaid-editor-code-height', String(newHeight))
-      return newHeight
-    })
-  }, [])
 
   // Track spacebar state for pan mode
   useEffect(() => {
@@ -254,7 +246,7 @@ export const Sidebar = memo(({
   const currentLabel = selectedNode?.label || selectedLink?.label || ''
 
   return (
-    <div className={`w-full h-full bg-white border-l border-gray-200 flex flex-col shadow-lg ${isFullscreen ? '' : 'z-30 relative'}`}>
+    <div ref={rootRef} className={`w-full h-full bg-white border-l border-gray-200 flex flex-col shadow-lg ${isFullscreen ? '' : 'z-30 relative'}`}>
       {/* Properties Panel */}
       <div
         className="border-b border-gray-100 bg-gray-50 flex-shrink-0 overflow-y-auto"
@@ -495,7 +487,7 @@ export const Sidebar = memo(({
 
       {/* Properties/Code Resizer */}
       {!isFullscreen && (
-        <ResizableDivider orientation="vertical" onResize={handlePropertiesResize} />
+        <ResizableDivider orientation="vertical" onResize={handlePropertiesResize} touchFriendly={compact} />
       )}
 
       {/* Code Editor */}
@@ -521,11 +513,12 @@ export const Sidebar = memo(({
 
       {/* Code/Preview Resizer */}
       {!isFullscreen && (
-        <ResizableDivider orientation="vertical" onResize={handleCodeResize} />
+        <ResizableDivider orientation="vertical" onResize={handleCodeResize} touchFriendly={compact} />
       )}
 
       {/* Preview */}
-      <div className={`${isFullscreen ? 'fixed inset-0 z-[100] bg-white flex flex-col' : 'flex flex-col bg-white flex-1 min-h-0'}`}>
+      <FullscreenPortal active={isFullscreen}>
+      <div className={`flex flex-col bg-white ${isFullscreen ? 'h-full' : 'flex-1 min-h-0'}`}>
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
           <span className="text-xs font-bold text-gray-600">预览</span>
           <div className="flex items-center space-x-2 relative">
@@ -552,10 +545,13 @@ export const Sidebar = memo(({
               )}
             </div>
             <button
+              type="button"
               onClick={onFullscreenToggle}
-              className="p-1 hover:bg-gray-200 rounded text-gray-600"
+              className={`${compact || isFullscreen ? 'min-h-[44px] min-w-[44px] px-2' : 'p-1'} hover:bg-gray-200 rounded text-gray-600 flex items-center gap-1`}
+              title={isFullscreen ? '退出全屏' : '全屏预览'}
             >
               <Icon path={isFullscreen ? Icons.Minimize2 : Icons.Maximize2} size={14} />
+              {(compact || isFullscreen) && <span className="text-xs">{isFullscreen ? '退出' : '全屏'}</span>}
             </button>
           </div>
         </div>
@@ -613,6 +609,7 @@ export const Sidebar = memo(({
           </div>
         </div>
       </div>
+      </FullscreenPortal>
     </div>
   )
 })

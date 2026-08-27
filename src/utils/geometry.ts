@@ -333,3 +333,24 @@ export function calculateItemsBounds<T extends PositionedItem>(
 
   return { minX, minY, maxX, maxY }
 }
+
+/**
+ * Zoom a view around a point in container coordinates (e.g. viewport center).
+ */
+export function zoomView(
+  view: { x: number; y: number; scale: number },
+  factor: number,
+  centerX: number,
+  centerY: number,
+  minScale = 0.2,
+  maxScale = 5
+): { x: number; y: number; scale: number } {
+  const newScale = Math.min(Math.max(view.scale * factor, minScale), maxScale)
+  const worldX = (centerX - view.x) / view.scale
+  const worldY = (centerY - view.y) / view.scale
+  return {
+    x: centerX - worldX * newScale,
+    y: centerY - worldY * newScale,
+    scale: newScale
+  }
+}

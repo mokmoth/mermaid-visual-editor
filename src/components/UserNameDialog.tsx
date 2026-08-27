@@ -109,10 +109,10 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
     <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-8 text-white">
+        <div className="bg-gradient-to-r from-blue-500 to-purple-600 px-6 py-4 sm:py-8 text-white">
           <div className="flex items-center justify-center mb-4">
             <svg 
-              className="w-16 h-16" 
+              className="w-12 h-12 sm:w-16 sm:h-16" 
               viewBox="0 0 24 24" 
               fill="none" 
               stroke="currentColor" 
@@ -121,7 +121,7 @@ export const UserNameDialog = memo(({ onConfirm, initialMode }: UserNameDialogPr
               <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
             </svg>
           </div>
-          <h1 className="text-2xl font-bold text-center">
+          <h1 className="text-xl sm:text-2xl font-bold text-center">
             {mode === 'check' ? '欢迎使用 Mermaid 编辑器' : 
              mode === 'login' ? '欢迎回来' : '创建新账号'}
           </h1>

@@ -1,7 +1,7 @@
 import { memo, useRef, useCallback, useEffect, useState, useMemo, RefObject } from 'react'
 import { NodeVisual } from './NodeVisual'
 import { LinkRenderer } from './LinkRenderer'
-import { Icon, Icons } from './Icons'
+import { ZoomHud } from './ZoomHud'
 import type {
   GraphNode,
   GraphLink,
@@ -14,7 +14,7 @@ import type {
   ResizeHandle
 } from '@/types'
 import { getNodeSize } from '@/utils/nodeSize'
-import { calculateFitToView, calculateFlowchartBounds } from '@/utils/geometry'
+import { calculateFitToView, calculateFlowchartBounds, zoomView } from '@/utils/geometry'
 import { activateOnEnterOrSpace, interactiveA11y } from '@/utils/a11y'
 
 interface CanvasProps {
@@ -206,8 +206,9 @@ export const Canvas = memo(({
     }
 
     if (e.button === 0 || e.button === 1) {
-      if (isSpacePressed || e.button === 1) {
-        // Space + left-click or middle-click = pan
+      const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen'
+      if (isSpacePressed || e.button === 1 || isTouchLike) {
+        // Space / middle-click / touch on blank = pan
         onPanStart(e)
       } else if (mode === 'select') {
         // Left-click drag on background = box select
@@ -250,6 +251,13 @@ export const Canvas = memo(({
     const newView = calculateFitToView(bounds, rect.width, rect.height)
     onViewChange(newView)
   }, [containerRef, nodes, swimlanes, onViewChange])
+
+  const handleZoomBy = useCallback((factor: number) => {
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    onViewChange(zoomView(editorView, factor, rect.width / 2, rect.height / 2))
+  }, [containerRef, editorView, onViewChange])
 
   const handleNodePointerDown = useCallback((e: React.PointerEvent, nodeId: string) => {
     e.stopPropagation()
@@ -378,7 +386,8 @@ export const Canvas = memo(({
       className={`absolute inset-0 overflow-hidden grid-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       style={{
         backgroundPosition: `${editorView.x}px ${editorView.y}px`,
-        backgroundSize: `${20 * editorView.scale}px ${20 * editorView.scale}px`
+        backgroundSize: `${20 * editorView.scale}px ${20 * editorView.scale}px`,
+        touchAction: 'none'
       }}
       onPointerDown={handleCanvasPointerDown}
       onPointerMove={handleCanvasPointerMove}
@@ -650,19 +659,12 @@ export const Canvas = memo(({
         )}
       </div>
 
-      {/* Zoom indicator */}
-      <div className="absolute bottom-4 left-4 flex space-x-2 bg-white p-1 rounded-md shadow border border-gray-200 z-30">
-        <div className="px-2 py-1 text-xs text-gray-500 font-mono border-r border-gray-100 flex items-center">
-          {(editorView.scale * 100).toFixed(0)}%
-        </div>
-        <button
-          onClick={handleFitToView}
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          title="适应视图"
-        >
-          <Icon path={Icons.Reset} size={14} />
-        </button>
-      </div>
+      <ZoomHud
+        scale={editorView.scale}
+        onZoomIn={() => handleZoomBy(1.25)}
+        onZoomOut={() => handleZoomBy(0.8)}
+        onFit={handleFitToView}
+      />
     </div>
   )
 })

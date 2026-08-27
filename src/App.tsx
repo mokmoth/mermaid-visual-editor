@@ -113,6 +113,27 @@ export default function App() {
     const saved = window.localStorage.getItem('mermaid-editor-sidebar-collapsed')
     return saved === 'true'
   })
+  const [viewportSize, setViewportSize] = useState(() => ({
+    width: window.innerWidth,
+    height: window.innerHeight
+  }))
+  const userPinnedOpenRef = useRef(false)
+  const prevCompactRef = useRef<boolean | null>(null)
+  const isPhone = viewportSize.width < 640
+  const isCompact = viewportSize.width <= 1024
+  const overlaySidebar = isCompact
+  const maxSidebarWidth = Math.min(600, Math.max(240, Math.round(viewportSize.width * 0.45)))
+  const effectiveSidebarWidth = Math.max(240, Math.min(sidebarWidth, maxSidebarWidth))
+  const phoneDrawerMin = Math.round(viewportSize.height * 0.36)
+  const phoneDrawerMax = Math.round(viewportSize.height * 0.92)
+  const [phoneDrawerHeight, setPhoneDrawerHeight] = useState(() => {
+    const saved = window.localStorage.getItem('mermaid-editor-phone-drawer-height')
+    const fallback = Math.round(window.innerHeight * 0.72)
+    const parsed = saved ? parseInt(saved, 10) : fallback
+    const minH = Math.round(window.innerHeight * 0.36)
+    const maxH = Math.round(window.innerHeight * 0.92)
+    return Math.max(minH, Math.min(maxH, parsed || fallback))
+  })
 
   // Plugin-specific states (same undo stack shape as flowchart)
   const [
@@ -335,7 +356,9 @@ export default function App() {
     // Reset view and leave code-edit mode so the new diagram's source is shown
     setIsManualEditing(false)
     setMermaidError(null)
+    setMode('select')
     setEditorView({ x: 0, y: 0, scale: 1 })
+    setPreviewView({ x: 0, y: 0, scale: 1 })
     setSelection(null)
     setMultiSelect(new Set())
   }, [resetGraph, resetState, resetClass, resetER, resetSeq])
@@ -571,9 +594,11 @@ export default function App() {
       if (renderTimeoutRef.current) {
         window.clearTimeout(renderTimeoutRef.current)
       }
-      renderTimeoutRef.current = window.setTimeout(() => {
-        renderDiagram(code)
-      }, 300)
+      if (!sidebarCollapsed) {
+        renderTimeoutRef.current = window.setTimeout(() => {
+          renderDiagram(code)
+        }, 300)
+      }
     }
 
     return () => {
@@ -581,7 +606,7 @@ export default function App() {
         window.clearTimeout(renderTimeoutRef.current)
       }
     }
-  }, [nodes, links, direction, isManualEditing, dragState, renderDiagram, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
+  }, [nodes, links, direction, isManualEditing, dragState, renderDiagram, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState, sidebarCollapsed])
 
   // Delete selection
   const deleteSelection = useCallback(() => {
@@ -1174,24 +1199,101 @@ export default function App() {
     loadDiagram(newDiagram)
   }, [activeDiagramType, currentDiagramId, saveCurrentDiagram, loadDiagram])
 
+  // Compact viewports auto-collapse the sidebar unless the user pinned it open.
+  useEffect(() => {
+    const apply = () => {
+      const width = window.innerWidth
+      const height = window.innerHeight
+      setViewportSize({ width, height })
+      const compact = width <= 1024
+      if (compact && !userPinnedOpenRef.current) {
+        setSidebarCollapsed(true)
+      }
+      if (!compact && prevCompactRef.current) {
+        userPinnedOpenRef.current = false
+        const saved = window.localStorage.getItem('mermaid-editor-sidebar-collapsed')
+        setSidebarCollapsed(saved === 'true')
+      }
+      prevCompactRef.current = compact
+      if (width < 640) {
+        const minH = Math.round(height * 0.36)
+        const maxH = Math.round(height * 0.92)
+        setPhoneDrawerHeight(h => Math.max(minH, Math.min(maxH, h)))
+      }
+    }
+    apply()
+    window.addEventListener('resize', apply)
+    return () => window.removeEventListener('resize', apply)
+  }, [])
+
   // Sidebar resize handler
   const handleSidebarResize = useCallback((delta: number) => {
     setSidebarWidth(prev => {
       const newWidth = prev - delta // Negative because dragging right should decrease sidebar
-      const clampedWidth = Math.max(280, Math.min(600, newWidth)) // Min 280px, max 600px
+      const clampedWidth = Math.max(240, Math.min(maxSidebarWidth, newWidth))
       window.localStorage.setItem('mermaid-editor-sidebar-width', String(clampedWidth))
       return clampedWidth
     })
-  }, [])
+  }, [maxSidebarWidth])
+
+  const handlePhoneDrawerPointerDown = useCallback((e: React.PointerEvent) => {
+    if (!isPhone) return
+    if ((e.target as HTMLElement).closest('button')) return
+    e.preventDefault()
+    e.stopPropagation()
+    const pointerId = e.pointerId
+    const startY = e.clientY
+    const startH = phoneDrawerHeight
+    const minH = phoneDrawerMin
+    const maxH = phoneDrawerMax
+    try {
+      ;(e.currentTarget as HTMLElement).setPointerCapture(pointerId)
+    } catch {
+      /* optional */
+    }
+    const onMove = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      const next = Math.max(minH, Math.min(maxH, startH + (startY - ev.clientY)))
+      setPhoneDrawerHeight(next)
+    }
+    const onUp = (ev: PointerEvent) => {
+      if (ev.pointerId !== pointerId) return
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+      setPhoneDrawerHeight(h => {
+        window.localStorage.setItem('mermaid-editor-phone-drawer-height', String(h))
+        return h
+      })
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }, [isPhone, phoneDrawerHeight, phoneDrawerMin, phoneDrawerMax])
 
   // Sidebar collapse toggle
   const handleSidebarToggle = useCallback(() => {
+    setIsFullscreen(false)
     setSidebarCollapsed(prev => {
       const newValue = !prev
+      if (window.innerWidth <= 1024) {
+        userPinnedOpenRef.current = !newValue
+      }
       window.localStorage.setItem('mermaid-editor-sidebar-collapsed', String(newValue))
       return newValue
     })
   }, [])
+
+  useEffect(() => {
+    if (sidebarCollapsed || !overlaySidebar) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (isFullscreen) setIsFullscreen(false)
+      else handleSidebarToggle()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [sidebarCollapsed, overlaySidebar, isFullscreen, handleSidebarToggle])
 
   // Label change
   const handleLabelChange = useCallback((value: string) => {
@@ -1728,6 +1830,7 @@ export default function App() {
           onAlignNodes={handleAlignNodes}
           onSnapToGridChange={setSnapToGrid}
           mermaidRef={mermaidRef}
+          compact={isPhone}
         />
       )
     }
@@ -1776,6 +1879,7 @@ export default function App() {
         mermaidRef={mermaidRef}
         onLinkTypeChange={handleLinkTypeChange}
         onLinkArrowChange={handleLinkArrowChange}
+        compact={isPhone}
       />
     )
   }
@@ -1831,42 +1935,90 @@ export default function App() {
         onLogout={handleUserLogout}
       />
 
-      <div className="flex flex-1 min-h-0">
+      <div className="flex flex-1 min-h-0 relative">
         <div className="flex-1 min-w-0 relative">
           <ErrorBoundary>
             {renderCanvas()}
           </ErrorBoundary>
         </div>
 
-        {/* Sidebar Toggle Button (visible when sidebar is collapsed) */}
         {sidebarCollapsed && (
           <button
+            type="button"
             onClick={handleSidebarToggle}
-            className="flex-shrink-0 w-8 bg-gradient-to-r from-gray-50 to-gray-100 hover:from-blue-50 hover:to-blue-100 border-l border-gray-200 flex items-center justify-center transition-all group"
-            title="展开侧边栏"
+            onPointerDown={(e) => e.stopPropagation()}
+            className={
+              isPhone
+                ? `absolute bottom-4 right-4 z-[70] min-h-[44px] min-w-[44px] px-4 py-2.5 rounded-full text-sm font-medium shadow-lg ${
+                    sidebarCollapsed
+                      ? 'bg-blue-600 text-white hover:bg-blue-700'
+                      : 'bg-white text-gray-800 border border-gray-200 hover:bg-gray-50'
+                  }`
+                : 'absolute right-3 top-1/2 -translate-y-1/2 z-[70] px-2.5 py-2 min-h-[44px] rounded-lg text-xs font-medium shadow-md bg-white border border-gray-200 text-gray-700 hover:border-blue-300 hover:text-blue-600'
+            }
+            title={sidebarCollapsed ? '展开代码与预览' : '收起代码与预览'}
           >
-            <div className="flex flex-col items-center gap-1">
-              <svg className="w-4 h-4 text-gray-400 group-hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span className="text-[10px] text-gray-400 group-hover:text-blue-500 writing-vertical transition-colors" style={{ writingMode: 'vertical-rl' }}>展开</span>
-            </div>
+            {sidebarCollapsed ? '代码' : '收起'}
           </button>
         )}
 
-        {/* Sidebar with collapse button */}
-        {!sidebarCollapsed && (
+        {!sidebarCollapsed && overlaySidebar && (
+          <>
+            <div
+              className="absolute inset-0 z-[45] bg-black/20"
+              onPointerDown={handleSidebarToggle}
+            />
+            <div
+              className={
+                isPhone
+                  ? 'mermaid-phone-drawer absolute left-0 right-0 bottom-0 z-50 bg-white rounded-t-2xl shadow-2xl flex flex-col'
+                  : 'absolute top-0 right-0 bottom-0 z-50 bg-white shadow-2xl flex flex-col'
+              }
+              style={isPhone ? { height: phoneDrawerHeight } : { width: effectiveSidebarWidth }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div
+                className={`relative flex items-center justify-between px-3 py-2 border-b border-gray-200 shrink-0 ${isPhone ? 'cursor-row-resize' : ''}`}
+                onPointerDown={handlePhoneDrawerPointerDown}
+                style={isPhone ? { touchAction: 'none' } : undefined}
+              >
+                {isPhone && (
+                  <div className="absolute left-1/2 -translate-x-1/2 top-1.5 w-12 h-1.5 rounded-full bg-gray-300" />
+                )}
+                <span className={`text-sm font-medium text-gray-700 ${isPhone ? 'mt-1' : ''}`}>代码与预览</span>
+                <button
+                  type="button"
+                  onClick={handleSidebarToggle}
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                  title="收起"
+                  aria-label="收起代码与预览"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <ErrorBoundary>
+                  {renderSidebar()}
+                </ErrorBoundary>
+              </div>
+            </div>
+          </>
+        )}
+
+        {!sidebarCollapsed && !overlaySidebar && (
           <>
             <ResizableDivider onResize={handleSidebarResize} />
 
-            <div style={{ width: sidebarWidth }} className="flex-shrink-0 h-full overflow-hidden relative group/sidebar">
-              {/* Collapse button - elegant pill shape */}
+            <div style={{ width: effectiveSidebarWidth }} className="flex-shrink-0 h-full overflow-hidden relative">
               <button
+                type="button"
                 onClick={handleSidebarToggle}
-                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-6 h-16 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 flex items-center justify-center transition-all duration-200 opacity-0 group-hover/sidebar:opacity-100"
+                className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 z-50 w-6 h-16 bg-white border border-gray-200 rounded-full shadow-md hover:shadow-lg hover:border-blue-300 hover:bg-blue-50 flex items-center justify-center"
                 title="收起侧边栏"
               >
-                <svg className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-3.5 h-3.5 text-gray-400 hover:text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
               </button>

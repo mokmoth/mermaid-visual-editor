@@ -110,6 +110,43 @@ export const ERRelationshipComponent = memo(({
 
 ERRelationshipComponent.displayName = 'ERRelationshipComponent'
 
+function crowsFoot(
+  x: number,
+  y: number,
+  angle: number,
+  stroke: string,
+  strokeWidth: number
+) {
+  const cos = Math.cos
+  const sin = Math.sin
+  const stem = 12
+  const toe = 7
+  const perp = angle + Math.PI / 2
+  const meetX = x + stem * cos(angle)
+  const meetY = y + stem * sin(angle)
+  return (
+    <g>
+      <line x1={meetX} y1={meetY} x2={x} y2={y} stroke={stroke} strokeWidth={strokeWidth} />
+      <line
+        x1={meetX}
+        y1={meetY}
+        x2={x + toe * cos(perp)}
+        y2={y + toe * sin(perp)}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+      <line
+        x1={meetX}
+        y1={meetY}
+        x2={x - toe * cos(perp)}
+        y2={y - toe * sin(perp)}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+    </g>
+  )
+}
+
 function renderCardinalityMarker(
   cardinality: Cardinality,
   x: number,
@@ -180,31 +217,14 @@ function renderCardinalityMarker(
     }
 
     case '}|': {
-      // Crow's foot with line (one or many)
-      const footOffset = 10
       return (
         <g>
+          {crowsFoot(x, y, angle, stroke, strokeWidth)}
           <line
-            x1={markerX - 3 * cos(angle) + perpOffset * cos(perpAngle)}
-            y1={markerY - 3 * sin(angle) + perpOffset * sin(perpAngle)}
-            x2={markerX - 3 * cos(angle) - perpOffset * cos(perpAngle)}
-            y2={markerY - 3 * sin(angle) - perpOffset * sin(perpAngle)}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-          />
-          <line
-            x1={markerX + footOffset * cos(angle)}
-            y1={markerY + footOffset * sin(angle)}
-            x2={markerX + perpOffset * cos(perpAngle)}
-            y2={markerY + perpOffset * sin(perpAngle)}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-          />
-          <line
-            x1={markerX + footOffset * cos(angle)}
-            y1={markerY + footOffset * sin(angle)}
-            x2={markerX - perpOffset * cos(perpAngle)}
-            y2={markerY - perpOffset * sin(perpAngle)}
+            x1={markerX + 4 * cos(angle) + perpOffset * cos(perpAngle)}
+            y1={markerY + 4 * sin(angle) + perpOffset * sin(perpAngle)}
+            x2={markerX + 4 * cos(angle) - perpOffset * cos(perpAngle)}
+            y2={markerY + 4 * sin(angle) - perpOffset * sin(perpAngle)}
             stroke={stroke}
             strokeWidth={strokeWidth}
           />
@@ -213,31 +233,14 @@ function renderCardinalityMarker(
     }
 
     case '}o': {
-      // Crow's foot with circle (zero or many)
-      const footOffset = 10
       return (
         <g>
+          {crowsFoot(x, y, angle, stroke, strokeWidth)}
           <circle
-            cx={markerX - 6 * cos(angle)}
-            cy={markerY - 6 * sin(angle)}
-            r={5}
+            cx={markerX + 6 * cos(angle)}
+            cy={markerY + 6 * sin(angle)}
+            r={4.5}
             fill="white"
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-          />
-          <line
-            x1={markerX + footOffset * cos(angle)}
-            y1={markerY + footOffset * sin(angle)}
-            x2={markerX + perpOffset * cos(perpAngle)}
-            y2={markerY + perpOffset * sin(perpAngle)}
-            stroke={stroke}
-            strokeWidth={strokeWidth}
-          />
-          <line
-            x1={markerX + footOffset * cos(angle)}
-            y1={markerY + footOffset * sin(angle)}
-            x2={markerX - perpOffset * cos(perpAngle)}
-            y2={markerY - perpOffset * sin(perpAngle)}
             stroke={stroke}
             strokeWidth={strokeWidth}
           />

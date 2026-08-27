@@ -1,6 +1,7 @@
 import { memo } from 'react'
 import type { Message, Participant } from './types'
 import { PARTICIPANT_WIDTH_CONST } from './ParticipantNode'
+import { estimateLabelWidth } from '@/utils/linkPath'
 
 interface MessageLineProps {
   message: Message
@@ -130,15 +131,7 @@ export const MessageLineComponent = memo(({
           </>
         )}
 
-        {/* Message text */}
-        <text
-          x={fromX + loopWidth + 5}
-          y={y + loopHeight / 2 + 4}
-          className="fill-gray-700 pointer-events-none select-none"
-          style={{ fontSize: 11 / scale }}
-        >
-          {message.text}
-        </text>
+        {messageLabel(message.text, fromX + loopWidth + 5, y + loopHeight / 2, scale, 'start')}
       </g>
     )
   }
@@ -218,16 +211,7 @@ export const MessageLineComponent = memo(({
         </>
       )}
 
-      {/* Message text */}
-      <text
-        x={(fromX + toX) / 2}
-        y={y - 8}
-        textAnchor="middle"
-        className="fill-gray-700 pointer-events-none select-none"
-        style={{ fontSize: 11 / scale }}
-      >
-        {message.text}
-      </text>
+      {message.text && messageLabel(message.text, (fromX + toX) / 2, y - 10, scale, 'middle')}
 
       {/* Selection highlight */}
       {isSelected && (
@@ -246,3 +230,38 @@ export const MessageLineComponent = memo(({
 })
 
 MessageLineComponent.displayName = 'MessageLineComponent'
+
+function messageLabel(
+  text: string,
+  x: number,
+  y: number,
+  scale: number,
+  anchor: 'middle' | 'start'
+) {
+  const width = estimateLabelWidth(text)
+  const height = 16
+  const rectX = anchor === 'middle' ? x - width / 2 : x - 4
+  return (
+    <g className="pointer-events-none">
+      <rect
+        x={rectX}
+        y={y - height / 2}
+        width={width}
+        height={height}
+        rx={3}
+        fill="white"
+        fillOpacity={0.95}
+      />
+      <text
+        x={x}
+        y={y}
+        textAnchor={anchor}
+        dominantBaseline="middle"
+        className="fill-gray-700 select-none"
+        style={{ fontSize: 11 / scale }}
+      >
+        {text}
+      </text>
+    </g>
+  )
+}

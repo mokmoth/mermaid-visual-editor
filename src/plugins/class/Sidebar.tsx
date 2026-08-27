@@ -5,6 +5,8 @@ import type { ClassDiagramState, ClassRelationship, ClassStereotype, ClassMember
 import { CLASS_STEREOTYPES, RELATIONSHIP_TYPES } from './types'
 import { Icon, Icons } from '@/components/Icons'
 import { ResizableDivider } from '@/components/ResizableDivider'
+import { FullscreenPortal } from '@/components/FullscreenPortal'
+import { usePanelHeights } from '@/hooks/usePanelHeights'
 import { getClassSize } from './ClassNode'
 import { calculateFitToView, calculateItemsBounds } from '@/utils/geometry'
 
@@ -22,6 +24,7 @@ interface ClassSidebarProps extends SidebarProps<ClassDiagramState> {
   mermaidRef?: React.RefObject<HTMLDivElement>
   onLinkTypeChange?: (type: any) => void
   onLinkArrowChange?: (arrow: any) => void
+  compact?: boolean
 }
 
 export const ClassSidebar = memo(({
@@ -41,36 +44,25 @@ export const ClassSidebar = memo(({
   onFullscreenToggle,
   onPreviewViewChange,
   mermaidRef,
+  compact = false,
 }: ClassSidebarProps) => {
   const { t } = useI18n()
   const [isSpacePressed, setIsSpacePressed] = useState(false)
-  const [propertiesHeight, setPropertiesHeight] = useState<number>(() => {
-    const saved = window.localStorage.getItem('mermaid-editor-class-properties-height')
-    return saved ? parseInt(saved, 10) : 280
-  })
-  const [codeHeight, setCodeHeight] = useState<number>(() => {
-    const saved = window.localStorage.getItem('mermaid-editor-class-code-height')
-    return saved ? parseInt(saved, 10) : 150
+  const {
+    rootRef,
+    propertiesHeight,
+    codeHeight,
+    handlePropertiesResize,
+    handleCodeResize
+  } = usePanelHeights({
+    propsKey: 'mermaid-editor-class-properties-height',
+    codeKey: 'mermaid-editor-class-code-height',
+    defaultProps: 280,
+    defaultCode: 150,
+    compact,
+    hasSelection: !!selection
   })
   const previewContainerRef = useRef<HTMLDivElement>(null)
-
-  // Properties section resize handler
-  const handlePropertiesResize = useCallback((delta: number) => {
-    setPropertiesHeight(prev => {
-      const newHeight = Math.max(150, Math.min(500, prev + delta))
-      window.localStorage.setItem('mermaid-editor-class-properties-height', String(newHeight))
-      return newHeight
-    })
-  }, [])
-
-  // Code section resize handler
-  const handleCodeResize = useCallback((delta: number) => {
-    setCodeHeight(prev => {
-      const newHeight = Math.max(80, Math.min(300, prev + delta))
-      window.localStorage.setItem('mermaid-editor-class-code-height', String(newHeight))
-      return newHeight
-    })
-  }, [])
 
   // Track spacebar state for pan mode
   useEffect(() => {
@@ -291,7 +283,7 @@ export const ClassSidebar = memo(({
   const [expandedMethod, setExpandedMethod] = useState<string | null>(null)
 
   return (
-    <div className="w-full h-full bg-white border-l border-gray-200 flex flex-col overflow-hidden">
+    <div ref={rootRef} className="w-full h-full bg-white border-l border-gray-200 flex flex-col overflow-hidden">
       {/* Properties Section */}
       <div
         className="border-b border-gray-200 overflow-y-auto flex-shrink-0"
@@ -642,7 +634,7 @@ export const ClassSidebar = memo(({
 
       {/* Properties/Code Resizer */}
       {!isFullscreen && (
-        <ResizableDivider orientation="vertical" onResize={handlePropertiesResize} />
+        <ResizableDivider orientation="vertical" onResize={handlePropertiesResize} touchFriendly={compact} />
       )}
 
       {/* Code Section */}
@@ -670,15 +662,17 @@ export const ClassSidebar = memo(({
       </div>
 
       {/* Resizable divider between Code and Preview */}
-      {!isFullscreen && <ResizableDivider orientation="vertical" onResize={handleCodeResize} />}
+      {!isFullscreen && <ResizableDivider orientation="vertical" onResize={handleCodeResize} touchFriendly={compact} />}
 
       {/* Preview Section */}
-      <div className={`border-t border-gray-200 flex flex-col ${isFullscreen ? 'fixed inset-0 z-[100] bg-white' : 'flex-1 min-h-0'}`}>
+      <FullscreenPortal active={!!isFullscreen}>
+      <div className={`border-t border-gray-200 flex flex-col bg-white ${isFullscreen ? 'h-full' : 'flex-1 min-h-0'}`}>
         <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50">
           <span className="text-sm font-medium text-gray-700">{t('sidebar.preview')}</span>
           <button
+            type="button"
             onClick={() => onFullscreenToggle?.()}
-            className="p-1 hover:bg-gray-200 rounded"
+            className={`${compact || isFullscreen ? 'min-h-[44px] min-w-[44px] px-2' : 'p-1'} hover:bg-gray-200 rounded`}
             title={isFullscreen ? t('sidebar.exitFullscreen') : t('sidebar.fullscreen')}
           >
             <Icon path={isFullscreen ? Icons.ExitFullscreen : Icons.Fullscreen} size={16} />
@@ -736,6 +730,7 @@ export const ClassSidebar = memo(({
           )}
         </div>
       </div>
+      </FullscreenPortal>
     </div>
   )
 })

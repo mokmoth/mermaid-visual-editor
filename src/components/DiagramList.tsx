@@ -118,7 +118,7 @@ export const DiagramList = memo(({
       />
 
       {/* Sidebar */}
-      <div className="fixed left-0 top-0 bottom-0 z-[101] w-80 bg-white shadow-2xl flex flex-col animate-slide-in">
+      <div className="fixed left-0 top-0 bottom-0 z-[101] w-full max-w-[20rem] bg-white shadow-2xl flex flex-col animate-slide-in">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
           <h2 className="text-lg font-semibold text-gray-800">我的图表</h2>

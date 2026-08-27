@@ -1,6 +1,6 @@
 import { memo, useMemo, RefObject } from 'react'
 import type { GraphNode, GraphLink, DrawingLink } from '@/types'
-import { getNodeCenter, getBorderPoint } from '@/utils/geometry'
+import { estimateLabelWidth, getLinkVisuals, parallelOffsetByLinkId } from '@/utils/linkPath'
 
 interface LinkRendererProps {
   links: GraphLink[]
@@ -14,44 +14,6 @@ interface LinkRendererProps {
   onTempLabelChange: (label: string) => void
   finishEditing: () => void
   inputRef: RefObject<HTMLInputElement>
-}
-
-function getLinkVisuals(link: GraphLink, nodeMap: Map<string, GraphNode>) {
-  const s = nodeMap.get(link.source)
-  const t = nodeMap.get(link.target)
-  if (!s || !t) return { path: '', midX: 0, midY: 0 }
-
-  const cS = getNodeCenter(s)
-  const cT = getNodeCenter(t)
-
-  // Self-loop handling
-  if (link.source === link.target) {
-    const gap = 30
-    return {
-      path: `M${cS.x + 10},${cS.y - 20} C${cS.x + gap},${cS.y - gap - 20} ${cS.x - gap},${cS.y - gap - 20} ${cS.x - 10},${cS.y - 20}`,
-      midX: cS.x,
-      midY: cS.y - gap - 20 + 10
-    }
-  }
-
-  // Calculate bezier control point (handle parallel lines)
-  const dx = cT.x - cS.x
-  const dy = cT.y - cS.y
-  let dist = Math.sqrt(dx * dx + dy * dy)
-  if (dist === 0) dist = 0.001
-
-  const controlX = (cS.x + cT.x) / 2
-  const controlY = (cS.y + cT.y) / 2
-
-  // Precise edge clipping
-  const startPoint = getBorderPoint(s, { x: controlX, y: controlY })
-  const endPoint = getBorderPoint(t, { x: controlX, y: controlY })
-
-  return {
-    path: `M${startPoint.x},${startPoint.y} Q${controlX},${controlY} ${endPoint.x},${endPoint.y}`,
-    midX: 0.25 * startPoint.x + 0.5 * controlX + 0.25 * endPoint.x,
-    midY: 0.25 * startPoint.y + 0.5 * controlY + 0.25 * endPoint.y
-  }
 }
 
 export const LinkRenderer = memo(({
@@ -70,8 +32,9 @@ export const LinkRenderer = memo(({
   const nodeMap = useMemo(() => new Map(nodes.map(n => [n.id, n])), [nodes])
 
   const linkVisuals = useMemo(() => {
+    const offsets = parallelOffsetByLinkId(links)
     return links.reduce((acc, link) => {
-      acc[link.id] = getLinkVisuals(link, nodeMap)
+      acc[link.id] = getLinkVisuals(link, nodeMap, offsets.get(link.id) ?? 0)
       return acc
     }, {} as Record<string, { path: string; midX: number; midY: number }>)
   }, [links, nodeMap])
@@ -242,22 +205,38 @@ export const LinkRenderer = memo(({
                   markerEnd={mEnd}
                   strokeDasharray={strokeDasharray}
                 />
-                {/* Label */}
-                {link.label && editingLinkId !== link.id && (
-                  <text 
-                    x={midX} 
-                    y={midY} 
-                    textAnchor="middle" 
-                    fill="#475569" 
-                    fontSize="12" 
-                    dy="-5" 
-                    className="bg-white px-1 pointer-events-auto cursor-pointer select-none"
-                    onClick={(e) => { e.stopPropagation(); onLinkClick(link.id) }}
-                    onDoubleClick={(e) => { e.stopPropagation(); onLinkDoubleClick(link.id, link.label || '') }}
-                  >
-                    {link.label}
-                  </text>
-                )}
+                {link.label && editingLinkId !== link.id && (() => {
+                  const labelW = estimateLabelWidth(link.label)
+                  const labelH = 16
+                  return (
+                    <g
+                      className="pointer-events-auto cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); onLinkClick(link.id) }}
+                      onDoubleClick={(e) => { e.stopPropagation(); onLinkDoubleClick(link.id, link.label || '') }}
+                    >
+                      <rect
+                        x={midX - labelW / 2}
+                        y={midY - labelH / 2}
+                        width={labelW}
+                        height={labelH}
+                        rx={3}
+                        fill="white"
+                        fillOpacity={0.95}
+                      />
+                      <text
+                        x={midX}
+                        y={midY}
+                        textAnchor="middle"
+                        dominantBaseline="middle"
+                        fill="#475569"
+                        fontSize="12"
+                        className="select-none"
+                      >
+                        {link.label}
+                      </text>
+                    </g>
+                  )
+                })()}
               </g>
             )
           })}

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import mermaid from 'mermaid'
 import { useI18n } from '@/i18n'
 import { applySvgToPreview, cleanupMermaidArtifacts, renderMermaidSvg } from '@/utils/mermaid'
@@ -7,6 +7,7 @@ export function useMermaidPreview() {
   const { t } = useI18n()
   const mermaidRef = useRef<HTMLDivElement>(null)
   const renderGeneration = useRef(0)
+  const lastGoodSvg = useRef<string | null>(null)
   const [mermaidError, setMermaidError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -19,12 +20,12 @@ export function useMermaidPreview() {
       flowchart: {
         htmlLabels: true,
         useMaxWidth: true,
-        wrappingWidth: 120,
-        nodeSpacing: 50,
-        rankSpacing: 60,
-        curve: 'basis',
-        padding: 15,
-        diagramPadding: 20
+        wrappingWidth: 140,
+        nodeSpacing: 80,
+        rankSpacing: 90,
+        curve: 'linear',
+        padding: 18,
+        diagramPadding: 24
       },
       themeVariables: {
         primaryColor: '#ffffff',
@@ -52,11 +53,21 @@ export function useMermaidPreview() {
     return () => cleanupMermaidArtifacts()
   }, [])
 
+  useLayoutEffect(() => {
+    const el = mermaidRef.current
+    if (!el || !lastGoodSvg.current) return
+    if (!el.querySelector('svg')) {
+      applySvgToPreview(el, lastGoodSvg.current)
+    }
+  })
+
   const renderDiagram = useCallback(async (code: string) => {
     const gen = ++renderGeneration.current
     if (!code.trim()) {
+      lastGoodSvg.current = null
       if (mermaidRef.current) mermaidRef.current.innerHTML = ''
       cleanupMermaidArtifacts()
+      setMermaidError(null)
       return
     }
 
@@ -78,13 +89,14 @@ export function useMermaidPreview() {
       ])
       if (gen !== renderGeneration.current || !mermaidRef.current) return
       applySvgToPreview(mermaidRef.current, svg)
+      lastGoodSvg.current = svg
       cleanupMermaidArtifacts()
       setMermaidError(null)
     } catch (e) {
       if (gen !== renderGeneration.current) return
       console.error('Mermaid render error:', e)
-      if (mermaidRef.current) {
-        mermaidRef.current.innerHTML = ''
+      if (mermaidRef.current && !mermaidRef.current.querySelector('svg') && lastGoodSvg.current) {
+        applySvgToPreview(mermaidRef.current, lastGoodSvg.current)
       }
       cleanupMermaidArtifacts()
       setMermaidError(t('errors.parseError') + ': ' + (e as Error).message)

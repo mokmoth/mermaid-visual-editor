@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { countDiagramElements, shouldApplyParsedState } from './diagramState'
-import { calculateFitToView } from './geometry'
+import { calculateFitToView, zoomView } from './geometry'
 import { generateMermaidCode, parseMermaidCode, sanitizeMermaidCode } from './mermaid'
 
 describe('shouldApplyParsedState', () => {
@@ -36,6 +36,18 @@ describe('calculateFitToView', () => {
       600
     )
     expect(view.scale).toBeLessThanOrEqual(1)
+  })
+})
+
+describe('zoomView', () => {
+  it('scales around the given center and clamps to max', () => {
+    const next = zoomView({ x: 0, y: 0, scale: 1 }, 1.25, 200, 100)
+    expect(next.scale).toBe(1.25)
+    expect(next.x).toBe(200 - 200 * 1.25)
+    expect(next.y).toBe(100 - 100 * 1.25)
+
+    const clamped = zoomView({ x: 0, y: 0, scale: 5 }, 2, 10, 10)
+    expect(clamped.scale).toBe(5)
   })
 })
 

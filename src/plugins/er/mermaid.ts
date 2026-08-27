@@ -26,9 +26,10 @@ export function generateERMermaidCode(
 
   // Generate relationships
   relationships.forEach(rel => {
-    const fromCard = cardinalityToMermaid(rel.fromCardinality)
-    const toCard = cardinalityToMermaid(rel.toCardinality)
-    let relLine = `    ${rel.from} ${fromCard}--${toCard} ${rel.to}`
+    const fromCard = cardinalityToMermaid(rel.fromCardinality, 'from')
+    const toCard = cardinalityToMermaid(rel.toCardinality, 'to')
+    const connector = rel.identifying === false ? '..' : '--'
+    let relLine = `    ${rel.from} ${fromCard}${connector}${toCard} ${rel.to}`
     if (rel.label) {
       relLine += ` : "${rel.label}"`
     }
@@ -38,12 +39,35 @@ export function generateERMermaidCode(
   return lines.join('\n')
 }
 
-function cardinalityToMermaid(card: Cardinality): string {
+/** Crow's-foot tokens flip depending on which side of `--` they sit. */
+export function cardinalityToMermaid(card: Cardinality, side: 'from' | 'to'): string {
+  if (side === 'from') {
+    switch (card) {
+      case '||': return '||'
+      case '|o': return '|o'
+      case '}|': return '}|'
+      case '}o': return '}o'
+      default: return '||'
+    }
+  }
   switch (card) {
     case '||': return '||'
-    case '|o': return '|o'
-    case '}|': return '}|'
-    case '}o': return '}o'
+    case '|o': return 'o|'
+    case '}|': return '|{'
+    case '}o': return 'o{'
+    default: return '||'
+  }
+}
+
+export function mermaidCardToInternal(token: string): Cardinality {
+  switch (token) {
+    case '||': return '||'
+    case '|o':
+    case 'o|': return '|o'
+    case '}|':
+    case '|{': return '}|'
+    case '}o':
+    case 'o{': return '}o'
     default: return '||'
   }
 }
@@ -113,10 +137,10 @@ export function parseERMermaidCode(
         }
       }
 
-      // Parse relationship
-      const relMatch = line.match(/^(\w+)\s*(\|\||}\||}\o|\|o)--(\|\||}\||}\o|\|o)\s*(\w+)(?:\s*:\s*"([^"]*)")?/)
+      // Parse relationship. Tokens differ on each side of -- / ..
+      const relMatch = line.match(/^(\w+)\s*(\|\||\|o|o\||}\||\|\{|}o|o\{)\s*(--|\.\.)\s*(\|\||\|o|o\||}\||\|\{|}o|o\{)\s*(\w+)(?:\s*:\s*"?([^"]*)"?\s*)?$/)
       if (relMatch) {
-        const [, from, fromCard, toCard, to, label] = relMatch
+        const [, from, fromCard, connector, toCard, to, label] = relMatch
 
         // Ensure entities exist
         if (!entityMap.has(from)) {
@@ -146,9 +170,10 @@ export function parseERMermaidCode(
           id: `r${relationships.length + 1}`,
           from,
           to,
-          fromCardinality: fromCard as Cardinality,
-          toCardinality: toCard as Cardinality,
-          label: label || undefined
+          fromCardinality: mermaidCardToInternal(fromCard),
+          toCardinality: mermaidCardToInternal(toCard),
+          label: label || undefined,
+          identifying: connector !== '..'
         })
       }
     }

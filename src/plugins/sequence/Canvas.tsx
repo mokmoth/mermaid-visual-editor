@@ -1,10 +1,10 @@
 import { memo, useCallback, useEffect, useState } from 'react'
-import { Icon, Icons } from '@/components/Icons'
+import { ZoomHud } from '@/components/ZoomHud'
 import type { CanvasProps } from '@/core/types'
 import type { SequenceDiagramState, Participant, Message } from './types'
 import { ParticipantNodeComponent, PARTICIPANT_WIDTH_CONST, PARTICIPANT_HEIGHT_CONST } from './ParticipantNode'
 import { MessageLineComponent } from './MessageLine'
-import { calculateFitToView, BoundingBox } from '@/utils/geometry'
+import { calculateFitToView, BoundingBox, zoomView } from '@/utils/geometry'
 
 interface SequenceCanvasProps extends CanvasProps<SequenceDiagramState> {
   nodes?: any[]
@@ -133,8 +133,9 @@ export const SequenceCanvas = memo(({
       (target.tagName === 'rect' && target.getAttribute('width') === '20000')
 
     if (isBackground) {
-      if (isSpacePressed || e.button === 1) {
-        // Space + left-click or middle-click = pan
+      const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen'
+      if (isSpacePressed || e.button === 1 || isTouchLike) {
+        // Space / middle-click / touch on blank = pan
         onPanStart(e)
       } else {
         // Left-click drag on background = box select
@@ -225,13 +226,21 @@ export const SequenceCanvas = memo(({
     onViewChange(newView)
   }, [containerRef, participants, messages, onViewChange])
 
+  const handleZoomBy = useCallback((factor: number) => {
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    onViewChange(zoomView(view, factor, rect.width / 2, rect.height / 2))
+  }, [containerRef, view, onViewChange])
+
   return (
     <div
       ref={containerRef}
       className={`absolute inset-0 overflow-hidden grid-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       style={{
         backgroundPosition: `${view.x}px ${view.y}px`,
-        backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`
+        backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`,
+        touchAction: 'none'
       }}
       onPointerDown={handlePointerDown}
     >
@@ -341,19 +350,12 @@ export const SequenceCanvas = memo(({
         />
       )}
 
-      {/* Zoom indicator */}
-      <div className="absolute bottom-4 left-4 flex space-x-2 bg-white p-1 rounded-md shadow border border-gray-200 z-30">
-        <div className="px-2 py-1 text-xs text-gray-500 font-mono border-r border-gray-100 flex items-center">
-          {(view.scale * 100).toFixed(0)}%
-        </div>
-        <button
-          onClick={handleFitToView}
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          title="适应视图"
-        >
-          <Icon path={Icons.Reset} size={14} />
-        </button>
-      </div>
+      <ZoomHud
+        scale={view.scale}
+        onZoomIn={() => handleZoomBy(1.25)}
+        onZoomOut={() => handleZoomBy(0.8)}
+        onFit={handleFitToView}
+      />
     </div>
   )
 })

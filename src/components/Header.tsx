@@ -88,6 +88,7 @@ export const Header = memo(({
   const [showUserMenu, setShowUserMenu] = useState(false)
   const [isNarrow, setIsNarrow] = useState(false)
   const [isVeryNarrow, setIsVeryNarrow] = useState(false)
+  const [isToolOverflow, setIsToolOverflow] = useState(false)
   const langMenuRef = useRef<HTMLDivElement>(null)
   const diagramMenuRef = useRef<HTMLDivElement>(null)
   const overflowMenuRef = useRef<HTMLDivElement>(null)
@@ -98,8 +99,9 @@ export const Header = memo(({
   useEffect(() => {
     const checkWidth = () => {
       const width = window.innerWidth
-      setIsNarrow(width < 900)
+      setIsNarrow(width < 1280)
       setIsVeryNarrow(width < 640)
+      setIsToolOverflow(width < 1100)
     }
     checkWidth()
     window.addEventListener('resize', checkWidth)
@@ -238,16 +240,38 @@ export const Header = memo(({
       icon: Icons.Language,
       subLabel: language.toUpperCase(),
       onClick: () => setShowLangMenu(!showLangMenu)
-    }
+    },
+    ...(currentUser ? [
+      { type: 'divider' as const },
+      {
+        label: currentUser,
+        icon: Icons.User,
+        disabled: true
+      },
+      ...(isUserAdmin && onOpenAdminPanel ? [{
+        label: '管理面板',
+        icon: Icons.Layout,
+        onClick: () => { onOpenAdminPanel(); setShowOverflowMenu(false) },
+        className: 'text-purple-600'
+      }] : []),
+      ...(onLogout ? [{
+        label: '切换用户',
+        icon: Icons.ArrowBack,
+        onClick: () => { onLogout(); setShowOverflowMenu(false) },
+        className: 'text-red-600'
+      }] : [])
+    ] : [])
   ]
 
   return (
-    <header ref={headerRef} className="bg-white border-b border-gray-200 shadow-sm z-40 relative">
+    <header ref={headerRef} className="bg-white border-b border-gray-200 shadow-sm z-[60] relative">
       {/* Main Row */}
-      <div className="flex items-center px-3 py-1.5 flex-wrap gap-y-1">
+      <div className="flex items-center px-3 py-1.5 flex-nowrap min-w-0 gap-x-1 overflow-x-auto no-scrollbar">
         {/* Logo and Diagram Management */}
         <div className="flex items-center shrink-0 gap-2">
-          <span className="text-blue-600 font-bold text-base whitespace-nowrap">{t('app.name')}</span>
+          {!isVeryNarrow && (
+            <span className="text-blue-600 font-bold text-base whitespace-nowrap">{t('app.name')}</span>
+          )}
           
           {/* My Diagrams Button */}
           {currentUser && (
@@ -259,12 +283,12 @@ export const Header = memo(({
               <svg className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
               </svg>
-              <span className="text-xs font-medium">我的图表</span>
+              {!isVeryNarrow && <span className="text-xs font-medium">我的图表</span>}
             </button>
           )}
 
           {/* Current Diagram Name */}
-          {currentDiagramName && (
+          {currentDiagramName && !isVeryNarrow && (
             <div className="flex items-center gap-1.5 px-2 py-1 bg-blue-50 rounded text-blue-700 text-xs">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
@@ -342,7 +366,7 @@ export const Header = memo(({
         {!isNarrow && (
           <>
             <div className="h-5 w-px bg-gray-300 mx-2 shrink-0" />
-            <div className="flex items-center gap-0.5 shrink-0">
+            <div className="flex items-center gap-0.5 min-w-0 overflow-x-auto no-scrollbar">
               {nodeTypes.map(({ type, icon, titleKey, separator }) => (
                 <span key={type} className="flex items-center shrink-0">
                   {separator && <div className="w-px h-5 bg-gray-300 mx-1" />}
@@ -358,10 +382,10 @@ export const Header = memo(({
           </>
         )}
 
-        <div className="flex-1 min-w-2" />
+        <div className="flex-1 min-w-2 shrink" />
 
-        {/* Right side tools - show when not very narrow */}
-        {!isVeryNarrow && (
+        {/* Right side tools - collapse into overflow below ~1100px so they are not clipped */}
+        {!isToolOverflow && (
           <div className="flex items-center space-x-0.5 shrink-0">
             <button
               onClick={onAutoLayout}
@@ -527,8 +551,7 @@ export const Header = memo(({
           </div>
         )}
 
-        {/* Overflow menu button - show when very narrow */}
-        {isVeryNarrow && (
+        {isToolOverflow && (
           <div className="relative shrink-0" ref={overflowMenuRef}>
             <button
               onClick={() => setShowOverflowMenu(!showOverflowMenu)}
@@ -541,12 +564,12 @@ export const Header = memo(({
             </button>
 
             {showOverflowMenu && (
-              <div className="absolute top-full right-0 mt-1 w-48 bg-white border border-gray-200 rounded-lg shadow-xl z-[100] py-1">
+              <div className="absolute top-full right-0 mt-1 w-48 max-h-[70vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-xl z-[100] py-1">
                 {overflowMenuItems.map((item, index) => {
                   if ('type' in item && item.type === 'divider') {
                     return <div key={index} className="h-px bg-gray-200 my-1" />
                   }
-                  const menuItem = item as { label: string; icon?: any; customIcon?: JSX.Element; onClick: () => void; disabled?: boolean; active?: boolean; className?: string; subLabel?: string }
+                  const menuItem = item as { label: string; icon?: any; customIcon?: JSX.Element; onClick?: () => void; disabled?: boolean; active?: boolean; className?: string; subLabel?: string }
                   return (
                     <button
                       key={index}

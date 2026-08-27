@@ -1,11 +1,11 @@
 import { memo, useCallback, useEffect, useState, useMemo } from 'react'
-import { Icon, Icons } from '@/components/Icons'
+import { ZoomHud } from '@/components/ZoomHud'
 import type { CanvasProps } from '@/core/types'
 import type { StateDiagramState, StateNode, StateTransition } from './types'
 import { StateNodeComponent, getStateBorderPoint, getStateNodeSize } from './StateNode'
 import type { ResizeHandle } from '@/types'
 import { TransitionComponent } from './Transition'
-import { calculateFitToView, calculateItemsBounds } from '@/utils/geometry'
+import { calculateFitToView, calculateItemsBounds, zoomView } from '@/utils/geometry'
 
 interface StateCanvasProps extends CanvasProps<StateDiagramState> {
   nodes?: any[]
@@ -159,8 +159,9 @@ export const StateCanvas = memo(({
         onDrawingLinkCancel()
       }
 
-      if (isSpacePressed || e.button === 1) {
-        // Space + left-click or middle-click = pan
+      const isTouchLike = e.pointerType === 'touch' || e.pointerType === 'pen'
+      if (isSpacePressed || e.button === 1 || isTouchLike) {
+        // Space / middle-click / touch on blank = pan
         onPanStart(e)
       } else if (mode === 'select') {
         // Left-click drag on background = box select
@@ -269,6 +270,13 @@ export const StateCanvas = memo(({
     onViewChange(newView)
   }, [containerRef, states, onViewChange])
 
+  const handleZoomBy = useCallback((factor: number) => {
+    const container = containerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    onViewChange(zoomView(view, factor, rect.width / 2, rect.height / 2))
+  }, [containerRef, view, onViewChange])
+
 
   // Render drawing link
   const renderDrawingLink = () => {
@@ -329,7 +337,8 @@ export const StateCanvas = memo(({
       className={`absolute inset-0 overflow-hidden grid-bg ${isSpacePressed ? 'cursor-grab active:cursor-grabbing' : 'cursor-default'}`}
       style={{
         backgroundPosition: `${view.x}px ${view.y}px`,
-        backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`
+        backgroundSize: `${20 * view.scale}px ${20 * view.scale}px`,
+        touchAction: 'none'
       }}
       onPointerDown={handlePointerDown}
       onContextMenu={handleContextMenu}
@@ -467,19 +476,12 @@ export const StateCanvas = memo(({
         />
       )}
 
-      {/* Zoom indicator */}
-      <div className="absolute bottom-4 left-4 flex space-x-2 bg-white p-1 rounded-md shadow border border-gray-200 z-30">
-        <div className="px-2 py-1 text-xs text-gray-500 font-mono border-r border-gray-100 flex items-center">
-          {(view.scale * 100).toFixed(0)}%
-        </div>
-        <button
-          onClick={handleFitToView}
-          className="p-1 hover:bg-gray-100 rounded text-gray-600"
-          title="适应视图"
-        >
-          <Icon path={Icons.Reset} size={14} />
-        </button>
-      </div>
+      <ZoomHud
+        scale={view.scale}
+        onZoomIn={() => handleZoomBy(1.25)}
+        onZoomOut={() => handleZoomBy(0.8)}
+        onFit={handleFitToView}
+      />
     </div>
   )
 })

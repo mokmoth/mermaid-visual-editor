@@ -28,7 +28,7 @@ export function createInitialFlowchartState(): FlowchartState {
     links: [
       { source: 'Start', target: 'Proc', id: 'link1', type: 'solid', arrow: 'forward' },
       { source: 'Proc', target: 'Cond', id: 'link2', label: '检查', type: 'solid', arrow: 'forward' },
-      { source: 'Cond', target: 'Proc', id: 'link3', label: '不通过', type: 'dotted', arrow: 'back' },
+      { source: 'Cond', target: 'Proc', id: 'link3', label: '不通过', type: 'dotted', arrow: 'forward' },
     ],
     swimlanes: []
   }
