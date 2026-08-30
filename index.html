@@ -6,6 +6,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="RL's Mermaid Tool - Visual diagram editor for multiple Mermaid diagram types" />
     <title>RL's Mermaid Tool</title>
+    <script>
+      (function () {
+        try {
+          if (window.parent === window) return;
+          // Only a same-origin host may enable the embed guest. Otherwise an
+          // unrelated site could change this app's localStorage by framing it.
+          if (window.parent.location.origin !== window.location.origin) return;
+          if (localStorage.getItem('mermaid_current_user')) return;
+          var user = 'PM工作台';
+          var key = 'mermaid_user_' + user;
+          if (!localStorage.getItem(key)) {
+            localStorage.setItem(key, JSON.stringify({
+              diagrams: [],
+              currentDiagramId: null,
+              passwordHash: 'embed',
+              settings: { snapToGrid: true, language: 'zh' }
+            }));
+          }
+          localStorage.setItem('mermaid_current_user', user);
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

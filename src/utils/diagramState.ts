@@ -2,6 +2,20 @@
  * Pure helpers for diagram element counts and code-sync guards.
  */
 
+export type HostDiagramType = 'flowchart' | 'state' | 'class' | 'er' | 'sequence'
+
+/** First mermaid header wins; comments / YAML frontmatter are skipped. */
+export function detectDiagramType(code: string): HostDiagramType {
+  const stripped = code
+    .replace(/^\s*(?:%%[^\n]*\n|---[\s\S]*?---\s*\n)+/, '')
+    .trimStart()
+  if (/^stateDiagram(?:-v2)?\b/i.test(stripped)) return 'state'
+  if (/^classDiagram\b/i.test(stripped)) return 'class'
+  if (/^erDiagram\b/i.test(stripped)) return 'er'
+  if (/^sequenceDiagram\b/i.test(stripped)) return 'sequence'
+  return 'flowchart'
+}
+
 export function countDiagramElements(type: string, state: unknown): number {
   if (!state || typeof state !== 'object') return 0
   const s = state as Record<string, unknown>
