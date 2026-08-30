@@ -2,8 +2,12 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "rewrites": [
     {
-      "source": "/mermaid/:path*",
-      "destination": "/:path*"
+      "source": "/mermaid",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/mermaid/(.*)",
+      "destination": "/$1"
     }
   ]
 }
