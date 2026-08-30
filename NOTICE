@@ -1,0 +1,9 @@
+Mermaid Visual Editor
+Copyright (c) 2026 Rice Lin
+
+This project is licensed under the MIT License. See LICENSE for the complete
+terms.
+
+The application uses third-party open-source packages listed in package.json
+and package-lock.json. Those packages remain subject to their respective
+copyright notices and license terms.

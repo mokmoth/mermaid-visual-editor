@@ -20,6 +20,15 @@ npm run preview  # 预览生产构建
 npm test         # 单元测试
 ```
 
+## 部署与嵌入
+
+Vercel 的正式入口是 `/mermaid/`；`vercel.json` 会把该前缀映射到 Vite
+构建产物，确保 `/mermaid/assets/*` 能正确加载。
+
+iframe 宿主桥只接受同源父窗口的消息，并同时校验 `event.source` 与
+`event.origin`。嵌入方需从与编辑器相同的 origin 提供页面（例如经宿主的
+同源静态预览路由），协议不支持任意跨域父页面。
+
 ## 当前能力
 
 - 五种图：flowchart / state / class / er / sequence
@@ -31,12 +40,8 @@ npm test         # 单元测试
 
 React 18 · TypeScript · Vite 5 · Tailwind · Mermaid 11 · dagre / 自研 Sugiyama 布局 · jsPDF
 
-## Git 状态（2026-08-26）
-
-`origin/main` 当前在 `f4d39a2`（v2 多图类型 + 预览/撤销/非法代码护栏）。
-
 ## 已知缺口（捡起来时优先看）
 
 - `src/App.tsx` 仍是约 1800 行总控，插件接口没有真正吃掉 flowchart
 - 密码是本地弱哈希，只适合单机自用
-- 没有自动测试；Mermaid 报错 SVG 有时会漏到页面上
+- 自动测试目前集中在纯逻辑、存储与 embed 协议，交互覆盖仍需继续补齐

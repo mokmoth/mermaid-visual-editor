@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { countDiagramElements, shouldApplyParsedState } from './diagramState'
+import { countDiagramElements, detectDiagramType, shouldApplyParsedState } from './diagramState'
 import { calculateFitToView, zoomView } from './geometry'
 import { generateMermaidCode, parseMermaidCode, sanitizeMermaidCode } from './mermaid'
 
@@ -14,6 +14,18 @@ describe('shouldApplyParsedState', () => {
 
   it('allows applying empty onto empty', () => {
     expect(shouldApplyParsedState(0, 0)).toBe(true)
+  })
+})
+
+describe('detectDiagramType', () => {
+  it('reads the mermaid header after comments', () => {
+    expect(detectDiagramType('flowchart TD\n  A-->B')).toBe('flowchart')
+    expect(detectDiagramType('graph LR\n  A-->B')).toBe('flowchart')
+    expect(detectDiagramType('stateDiagram-v2\n  [*] --> A')).toBe('state')
+    expect(detectDiagramType('classDiagram\n  A -- B')).toBe('class')
+    expect(detectDiagramType('erDiagram\n  USER ||--o{ ORDER : places')).toBe('er')
+    expect(detectDiagramType('sequenceDiagram\n  A->>B: hi')).toBe('sequence')
+    expect(detectDiagramType('%% note\nstateDiagram\n  [*] --> A')).toBe('state')
   })
 })
 

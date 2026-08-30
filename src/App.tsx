@@ -9,8 +9,9 @@ import { DiagramList } from './components/DiagramList'
 import { AdminPanel } from './components/AdminPanel'
 import { useUndoRedo } from './hooks/useUndoRedo'
 import { generateMermaidCode, parseMermaidCode } from './utils/mermaid'
-import { countDiagramElements, shouldApplyParsedState } from './utils/diagramState'
+import { countDiagramElements, detectDiagramType, shouldApplyParsedState } from './utils/diagramState'
 import { useMermaidPreview } from './hooks/useMermaidPreview'
+import { useHostEmbedBridge } from './hooks/useHostEmbedBridge'
 import { applyAutoLayout } from './utils/layout'
 import { getNodeSize } from './utils/nodeSize'
 import { getNodeCenter, calculateFitToView, calculateFlowchartBounds, calculateItemsBounds } from './utils/geometry'
@@ -1150,6 +1151,73 @@ export default function App() {
       return false
     }
   }, [nodes, direction, setGraph, activeDiagramType, activePlugin, stateState, classState, erState, sequenceState])
+
+  const applyHostSource = useCallback((code: string) => {
+    const type = detectDiagramType(code)
+    const plugin = pluginRegistry.get(type)
+    const typeNames: Record<string, string> = {
+      flowchart: '流程图',
+      state: '状态图',
+      class: '类图',
+      er: 'ER图',
+      sequence: '时序图',
+    }
+    if (type !== activeDiagramType || !currentDiagramId) {
+      const newDiagram = createDiagram(
+        `来自对话的${typeNames[type] || type}`,
+        type,
+        plugin?.getDefaultDirection?.() || 'TD',
+        plugin?.createInitialState()
+      )
+      loadDiagram(newDiagram)
+    }
+
+    setGeneratedCode(code)
+    setIsManualEditing(false)
+
+    if (type === 'flowchart') {
+      try {
+        const result = parseMermaidCode(code, [], 'TD')
+        if (result && result.nodes.length > 0) {
+          const layoutedNodes = result.nodes.length > 3
+            ? applyAutoLayout(result.nodes, result.links, result.direction, [])
+            : result.nodes
+          setDirection(result.direction)
+          setGraph(layoutedNodes, result.links)
+        }
+      } catch (err) {
+        console.error('Host mermaid parse error:', err)
+      }
+    } else if (plugin) {
+      try {
+        const result = plugin.fromMermaid(code, plugin.createInitialState(), plugin.getDefaultDirection?.() || 'TD')
+        if (result.success && result.state) {
+          if (result.direction) setDirection(result.direction)
+          if (type === 'state') setStateState(result.state as StateDiagramState)
+          else if (type === 'class') setClassState(result.state as ClassDiagramState)
+          else if (type === 'er') setERState(result.state as ERDiagramState)
+          else if (type === 'sequence') setSequenceState(result.state as SequenceDiagramState)
+        }
+      } catch (err) {
+        console.error('Host mermaid parse error:', err)
+      }
+    }
+  }, [
+    activeDiagramType,
+    currentDiagramId,
+    loadDiagram,
+    setGraph,
+    setStateState,
+    setClassState,
+    setERState,
+    setSequenceState,
+  ])
+
+  useHostEmbedBridge({
+    generatedCode,
+    mermaidRef,
+    applySource: applyHostSource,
+  })
 
   const handleCodeChange = useCallback((newCode: string) => {
     setGeneratedCode(newCode)

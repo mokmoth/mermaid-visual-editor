@@ -2,6 +2,7 @@
   "name": "rls-mermaid-tool",
   "version": "2.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "description": "RL's Mermaid Tool - A visual editor for creating multiple types of Mermaid diagrams",
   "scripts": {
