@@ -1,5 +1,14 @@
 import { useEffect, useRef, type RefObject } from 'react'
 
+export const HOST_EMBED_MESSAGES = {
+  set: 'host-mermaid-set',
+  requestSource: 'host-mermaid-request-source',
+  requestSvg: 'host-mermaid-request-svg',
+  source: 'host-mermaid-source',
+  svg: 'host-mermaid-svg',
+  ready: 'host-mermaid-ready',
+} as const
+
 export function isHostEmbed(): boolean {
   try {
     return typeof window !== 'undefined' && window.parent !== window
@@ -16,7 +25,7 @@ export function isTrustedHostMessage(
   return event.source === expectedSource && event.origin === expectedOrigin
 }
 
-/** postMessage protocol used by PM 工作台's diagram overlay iframe. */
+/** Generic postMessage protocol for same-origin iframe hosts. */
 export function useHostEmbedBridge(opts: {
   generatedCode: string
   mermaidRef: RefObject<HTMLDivElement | null>
@@ -42,20 +51,20 @@ export function useHostEmbedBridge(opts: {
       if (!isTrustedHostMessage(event, parentWindow, targetOrigin)) return
       const data = event.data
       if (!data || typeof data !== 'object') return
-      if (data.type === 'pm-mermaid-set' && typeof data.source === 'string') {
+      if (data.type === HOST_EMBED_MESSAGES.set && typeof data.source === 'string') {
         applyRef.current(data.source)
       }
-      if (data.type === 'pm-mermaid-request-source') {
-        postToHost({ type: 'pm-mermaid-source', source: codeRef.current })
+      if (data.type === HOST_EMBED_MESSAGES.requestSource) {
+        postToHost({ type: HOST_EMBED_MESSAGES.source, source: codeRef.current })
       }
-      if (data.type === 'pm-mermaid-request-svg') {
+      if (data.type === HOST_EMBED_MESSAGES.requestSvg) {
         const node = mermaidRef.current
         const svg = node ? node.innerHTML || '' : ''
-        postToHost({ type: 'pm-mermaid-svg', svg })
+        postToHost({ type: HOST_EMBED_MESSAGES.svg, svg })
       }
     }
     window.addEventListener('message', onMsg)
-    postToHost({ type: 'pm-mermaid-ready' })
+    postToHost({ type: HOST_EMBED_MESSAGES.ready })
     return () => window.removeEventListener('message', onMsg)
   }, [mermaidRef])
 
@@ -64,7 +73,7 @@ export function useHostEmbedBridge(opts: {
     const targetOrigin = window.location.origin
     if (targetOrigin === 'null') return
     window.parent.postMessage(
-      { type: 'pm-mermaid-source', source: opts.generatedCode },
+      { type: HOST_EMBED_MESSAGES.source, source: opts.generatedCode },
       targetOrigin
     )
   }, [opts.generatedCode])

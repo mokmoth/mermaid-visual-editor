@@ -1,5 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import { isTrustedHostMessage } from './useHostEmbedBridge'
+import { HOST_EMBED_MESSAGES, isTrustedHostMessage } from './useHostEmbedBridge'
+
+describe('HOST_EMBED_MESSAGES', () => {
+  it('uses a generic public protocol namespace', () => {
+    expect(Object.values(HOST_EMBED_MESSAGES)).toEqual([
+      'host-mermaid-set',
+      'host-mermaid-request-source',
+      'host-mermaid-request-svg',
+      'host-mermaid-source',
+      'host-mermaid-svg',
+      'host-mermaid-ready',
+    ])
+  })
+})
 
 describe('isTrustedHostMessage', () => {
   const parentWindow = {} as Window
